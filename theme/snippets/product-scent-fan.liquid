@@ -1,0 +1,365 @@
+{%- comment -%}
+  Usage
+    PDP (fanned by default, notes clickable):
+      {% render 'product-scent-fan', product: product, mode: 'pdp' %}
+    Collection grid (collapsed, fans on card hover):
+      {% render 'product-scent-fan', styles_only: true %}          once, above the grid
+      {% render 'product-scent-fan', product: card_product, mode: 'grid', skip_styles: true %}   per card
+
+  Params
+    product      Product object (required unless styles_only)
+    mode         'grid' | 'pdp'  (default 'grid')
+    image        Image object override (defaults to product.featured_image)
+    sizes        img sizes attribute
+    styles_only  Output the CSS block only
+    skip_styles  Suppress the CSS block
+
+  Metafields (namespace cabin)
+    cabin.top_note / cabin.heart_note / cabin.base_note  -> metaobject_reference (scent_note)
+    scent_note fields: name, alias, profile, chemistry, molecular_weight
+{%- endcomment -%}
+
+{%- unless skip_styles -%}
+{% style %}
+  .scent-fan {
+    --note-x: 0%;
+    --note-y: 0%;
+    --note-r: 0deg;
+    --note-s: 0.88;
+    --note-o: 0;
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 5;
+    container-type: inline-size;
+    isolation: isolate;
+  }
+
+  .scent-fan__vessel {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    z-index: var(--cabin-z-vessel);
+    pointer-events: none;
+  }
+
+  .scent-fan__vessel img {
+    width: 68%;
+    height: auto;
+    max-height: 92%;
+    object-fit: contain;
+    filter: drop-shadow(0 24px 32px rgba(0, 0, 0, 0.55));
+    transition: transform var(--cabin-dur-base) var(--cabin-ease-out);
+  }
+
+  .scent-fan__note {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 42%;
+    aspect-ratio: 3 / 4;
+    padding: 6cqw 5cqw;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 1.5cqw;
+    border: 1px solid var(--cabin-border);
+    border-radius: var(--cabin-radius-md);
+    background: linear-gradient(180deg, var(--cabin-elevation-2) 0%, var(--cabin-elevation) 100%);
+    box-shadow: var(--cabin-shadow-note);
+    color: var(--cabin-text);
+    text-align: left;
+    font: inherit;
+    cursor: default;
+    z-index: var(--cabin-z-note);
+    transform-origin: 50% 120%;
+    opacity: var(--note-o);
+    transform: translate(calc(-50% + var(--note-x)), calc(-50% + var(--note-y))) rotate(var(--note-r)) scale(var(--note-s));
+    transition: transform var(--cabin-dur-base) var(--cabin-ease-out), opacity var(--cabin-dur-base) var(--cabin-ease-out), box-shadow var(--cabin-dur-base) var(--cabin-ease-out), border-color var(--cabin-dur-fast) var(--cabin-ease-out);
+    will-change: transform;
+  }
+
+  .scent-fan__note::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 12%;
+    right: 12%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--cabin-brass), transparent);
+    opacity: 0.7;
+  }
+
+  .scent-fan__tier {
+    font-family: var(--cabin-font-ui);
+    font-size: 3.2cqw;
+    font-weight: 500;
+    letter-spacing: var(--cabin-track-label);
+    text-transform: uppercase;
+    color: var(--cabin-brass);
+  }
+
+  .scent-fan__name {
+    font-family: var(--cabin-font-serif);
+    font-size: 6cqw;
+    letter-spacing: var(--cabin-track-serif);
+    line-height: 1.15;
+    color: var(--cabin-display);
+  }
+
+  .scent-fan__alias {
+    font-family: var(--cabin-font-ui);
+    font-size: 3cqw;
+    color: var(--cabin-text-muted);
+    letter-spacing: 0.04em;
+  }
+
+  .scent-fan__hint {
+    margin-top: auto;
+    font-family: var(--cabin-font-ui);
+    font-size: 2.8cqw;
+    letter-spacing: var(--cabin-track-label);
+    text-transform: uppercase;
+    color: var(--cabin-text-muted);
+    opacity: 0;
+    transition: opacity var(--cabin-dur-fast) var(--cabin-ease-out);
+  }
+
+  :is(
+    .scent-fan--pdp,
+    .scent-fan--grid:hover,
+    .scent-fan--grid:focus-within,
+    .card-wrapper:hover .scent-fan--grid,
+    .card-wrapper:focus-within .scent-fan--grid,
+    .scent-fan.is-open
+  ) .scent-fan__note {
+    --note-s: 1;
+    --note-o: 1;
+  }
+
+  :is(
+    .scent-fan--pdp,
+    .scent-fan--grid:hover,
+    .scent-fan--grid:focus-within,
+    .card-wrapper:hover .scent-fan--grid,
+    .card-wrapper:focus-within .scent-fan--grid,
+    .scent-fan.is-open
+  ) .scent-fan__note--top {
+    --note-x: calc(-1 * var(--cabin-fan-spread));
+    --note-y: var(--cabin-fan-lift);
+    --note-r: calc(-1 * var(--cabin-fan-angle));
+  }
+
+  :is(
+    .scent-fan--pdp,
+    .scent-fan--grid:hover,
+    .scent-fan--grid:focus-within,
+    .card-wrapper:hover .scent-fan--grid,
+    .card-wrapper:focus-within .scent-fan--grid,
+    .scent-fan.is-open
+  ) .scent-fan__note--heart {
+    --note-y: calc(var(--cabin-fan-lift) * 1.8);
+    --note-r: 0deg;
+  }
+
+  :is(
+    .scent-fan--pdp,
+    .scent-fan--grid:hover,
+    .scent-fan--grid:focus-within,
+    .card-wrapper:hover .scent-fan--grid,
+    .card-wrapper:focus-within .scent-fan--grid,
+    .scent-fan.is-open
+  ) .scent-fan__note--base {
+    --note-x: var(--cabin-fan-spread);
+    --note-y: var(--cabin-fan-lift);
+    --note-r: var(--cabin-fan-angle);
+  }
+
+  html.js .scent-fan--pdp:not(.is-revealed) .scent-fan__note {
+    --note-x: 0%;
+    --note-y: 0%;
+    --note-r: 0deg;
+    --note-s: 0.88;
+    --note-o: 0;
+  }
+
+  .scent-fan--grid .scent-fan__note {
+    pointer-events: none;
+  }
+
+  .scent-fan--pdp {
+    --cabin-fan-angle: 16deg;
+    --cabin-fan-lift: -16%;
+    --cabin-fan-spread: 34%;
+  }
+
+  .scent-fan--pdp .scent-fan__note {
+    cursor: pointer;
+  }
+
+  .scent-fan--pdp .scent-fan__note:hover,
+  .scent-fan--pdp .scent-fan__note:focus-visible,
+  .scent-fan--pdp .scent-fan__note.is-active {
+    --note-s: 1.06;
+    z-index: var(--cabin-z-note-raised);
+    border-color: rgba(var(--cabin-brass-rgb), 0.6);
+    box-shadow: var(--cabin-shadow-note-raised);
+  }
+
+  .scent-fan--pdp .scent-fan__note:hover .scent-fan__hint,
+  .scent-fan--pdp .scent-fan__note:focus-visible .scent-fan__hint {
+    opacity: 1;
+  }
+
+  .scent-fan--pdp .scent-fan__note:focus-visible {
+    outline: 2px solid var(--cabin-brass);
+    outline-offset: 4px;
+  }
+
+  .scent-fan--pdp .scent-fan__note--top:hover,
+  .scent-fan--pdp .scent-fan__note--top:focus-visible {
+    --note-y: calc(var(--cabin-fan-lift) - 4%);
+  }
+
+  .scent-fan--pdp .scent-fan__note--heart:hover,
+  .scent-fan--pdp .scent-fan__note--heart:focus-visible {
+    --note-y: calc(var(--cabin-fan-lift) * 1.8 - 4%);
+  }
+
+  .scent-fan--pdp .scent-fan__note--base:hover,
+  .scent-fan--pdp .scent-fan__note--base:focus-visible {
+    --note-y: calc(var(--cabin-fan-lift) - 4%);
+  }
+
+  .scent-fan--pdp .scent-fan__vessel {
+    pointer-events: none;
+    align-items: end;
+    padding-bottom: 3%;
+  }
+
+  .scent-fan--pdp .scent-fan__vessel img {
+    width: 56%;
+    max-height: 78%;
+  }
+
+  @media (hover: none) {
+    .scent-fan--grid .scent-fan__note {
+      --note-s: 0.96;
+      --note-o: 1;
+    }
+    .scent-fan--grid .scent-fan__note--top { --note-x: -10%; --note-y: -4%; --note-r: -6deg; }
+    .scent-fan--grid .scent-fan__note--base { --note-x: 10%; --note-y: -4%; --note-r: 6deg; }
+    .scent-fan--grid .scent-fan__note--heart { --note-y: -7%; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scent-fan__note,
+    .scent-fan__vessel img {
+      transition: none;
+    }
+  }
+{% endstyle %}
+{%- endunless -%}
+
+{%- unless styles_only -%}
+{%- liquid
+  assign fan_mode = mode | default: 'grid'
+  assign fan_image = image | default: product.featured_image
+  assign fan_sizes = sizes | default: '(min-width: 990px) 40vw, (min-width: 750px) 50vw, 100vw'
+  assign note_top = product.metafields.cabin.top_note.value
+  assign note_heart = product.metafields.cabin.heart_note.value
+  assign note_base = product.metafields.cabin.base_note.value
+  assign fan_id = 'scent-fan-' | append: product.id | append: '-' | append: fan_mode
+  assign tiers = 'top,heart,base' | split: ','
+-%}
+
+<div
+  id="{{ fan_id }}"
+  class="scent-fan scent-fan--{{ fan_mode }}"
+  data-scent-fan
+  data-product-handle="{{ product.handle }}"
+  {% if fan_mode == 'pdp' %}role="group" aria-label="{{ product.title | escape }} scent pyramid"{% endif %}
+>
+  {%- for tier in tiers -%}
+    {%- liquid
+      case tier
+        when 'top'
+          assign note = note_top
+          assign tier_label = 'Top'
+          assign tier_window = 'First 10 to 20 minutes'
+        when 'heart'
+          assign note = note_heart
+          assign tier_label = 'Heart'
+          assign tier_window = 'Hours 1 to 6'
+        else
+          assign note = note_base
+          assign tier_label = 'Base'
+          assign tier_window = 'The lingering signature'
+      endcase
+      if note.name.value != blank
+        assign note_name = note.name.value
+        assign note_alias = note.alias.value
+        assign note_profile = note.profile.value
+        assign note_chemistry = note.chemistry.value
+        assign note_molecule = note.molecular_weight.value
+      else
+        assign note_name = note
+        assign note_alias = blank
+        assign note_profile = blank
+        assign note_chemistry = blank
+        assign note_molecule = blank
+      endif
+    -%}
+
+    {%- if note_name != blank -%}
+      {%- if fan_mode == 'pdp' -%}
+        <button
+          type="button"
+          class="scent-fan__note scent-fan__note--{{ tier }}"
+          data-scent-note
+          data-note-tier="{{ tier_label }}"
+          data-note-window="{{ tier_window }}"
+          data-note-name="{{ note_name | escape }}"
+          data-note-alias="{{ note_alias | escape }}"
+          data-note-profile="{{ note_profile | escape }}"
+          data-note-chemistry="{{ note_chemistry | escape }}"
+          data-note-molecule="{{ note_molecule | escape }}"
+          aria-haspopup="dialog"
+          aria-label="{{ tier_label }} note, {{ note_name | escape }}. Open detail."
+        >
+      {%- else -%}
+        <span class="scent-fan__note scent-fan__note--{{ tier }}" aria-hidden="true">
+      {%- endif -%}
+          <span class="scent-fan__tier">{{ tier_label }}</span>
+          <span class="scent-fan__name">{{ note_name }}</span>
+          {%- if note_alias != blank -%}
+            <span class="scent-fan__alias">{{ note_alias }}</span>
+          {%- endif -%}
+          {%- if fan_mode == 'pdp' -%}
+            <span class="scent-fan__hint" aria-hidden="true">Open note</span>
+          {%- endif -%}
+      {%- if fan_mode == 'pdp' -%}
+        </button>
+      {%- else -%}
+        </span>
+      {%- endif -%}
+    {%- endif -%}
+  {%- endfor -%}
+
+  <div class="scent-fan__vessel">
+    {%- if fan_image != blank -%}
+      {{
+        fan_image
+        | image_url: width: 1200
+        | image_tag:
+          widths: '360, 540, 720, 900, 1200',
+          sizes: fan_sizes,
+          loading: 'lazy',
+          alt: fan_image.alt | default: product.title
+      }}
+    {%- else -%}
+      {{ 'product-apparel-1' | placeholder_svg_tag: 'placeholder-svg' }}
+    {%- endif -%}
+  </div>
+</div>
+{%- endunless -%}

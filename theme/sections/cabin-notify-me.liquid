@@ -1,0 +1,66 @@
+{%- liquid
+  assign variant = product.selected_or_first_available_variant
+  assign show = false
+  if section.settings.always_show
+    assign show = true
+  elsif product.available == false
+    assign show = true
+  elsif variant.available == false
+    assign show = true
+  elsif product.tags contains 'unreleased'
+    assign show = true
+  endif
+  assign notify_key = product.handle
+  if variant and product.variants.size > 1
+    assign notify_key = product.handle | append: '-' | append: variant.id
+  endif
+-%}
+
+{%- if show -%}
+{% style %}
+  #shopify-section-{{ section.id }} .notify-me {
+    padding-block: {{ section.settings.padding_top }}px {{ section.settings.padding_bottom }}px;
+  }
+
+  .notify-me__inner {
+    max-width: {{ section.settings.max_width }}px;
+    margin-inline: auto;
+  }
+{% endstyle %}
+
+<div class="notify-me cabin-theme" data-notify-me data-variant-id="{{ variant.id }}">
+  <div class="notify-me__inner cabin-container">
+    {%- render 'cabin-notify-form',
+      key: notify_key,
+      title: product.title,
+      heading: section.settings.heading,
+      body: section.settings.body,
+      success: section.settings.success,
+      allow_sms: section.settings.allow_sms
+    -%}
+  </div>
+</div>
+
+<script src="{{ 'cabin-waitlist.js' | asset_url }}" defer="defer"></script>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Notify me on release",
+  "tag": "section",
+  "class": "section",
+  "enabled_on": { "templates": ["product"] },
+  "settings": [
+    { "type": "paragraph", "content": "Renders only when the product or selected variant is unavailable, or the product is tagged 'unreleased'." },
+    { "type": "text", "id": "heading", "label": "Heading", "default": "Notify me on release" },
+    { "type": "text", "id": "body", "label": "Body", "default": "Currently resting. Leave an address and we will write once when this scent returns." },
+    { "type": "text", "id": "success", "label": "Success message", "default": "Noted. We will write once, when it is ready." },
+    { "type": "checkbox", "id": "allow_sms", "label": "Offer SMS channel", "default": true },
+    { "type": "checkbox", "id": "always_show", "label": "Always show (preview)", "default": false },
+    { "type": "range", "id": "max_width", "label": "Max width", "min": 320, "max": 900, "step": 10, "unit": "px", "default": 640 },
+    { "type": "range", "id": "padding_top", "label": "Top padding", "min": 0, "max": 120, "step": 4, "unit": "px", "default": 24 },
+    { "type": "range", "id": "padding_bottom", "label": "Bottom padding", "min": 0, "max": 120, "step": 4, "unit": "px", "default": 24 }
+  ],
+  "presets": [{ "name": "Notify me on release" }]
+}
+{% endschema %}
