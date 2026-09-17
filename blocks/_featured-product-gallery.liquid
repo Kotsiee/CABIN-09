@@ -75,6 +75,13 @@
       "default": "contain",
       "label": "t:settings.limit_media_to_screen_height",
       "visible_if": "{{ block.settings.image_ratio == 'adapt' }}"
+    },
+    {
+      "type": "checkbox",
+      "id": "scent_fan",
+      "label": "Show scent fan on hover",
+      "info": "Replaces the product media with the CABIN-09 note fan when the product has scent notes. Off keeps the media carousel.",
+      "default": false
     }
   ]
 }

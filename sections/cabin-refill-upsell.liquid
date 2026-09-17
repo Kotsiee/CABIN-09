@@ -1,0 +1,831 @@
+{%- comment -%}
+  CABIN-09 · Refill upsell ("The Reserve").
+
+  Sells the 10ml refill SKU from any page: image on the left, copy, price and
+  a native `/cart/add` product form on the right, stacking on mobile. When the
+  refill product carries selling plans (and `show_subscription` is on) the
+  form exposes a radio group: "One-time" plus one radio per selling plan.
+
+  Selling plan contract
+    - every plan radio is name="selling_plan" with the selling plan id as its
+      value;
+    - the One-time radio shares the name (so the group is mutually exclusive
+      without JavaScript) and has an empty value, which Shopify documents as
+      "no selected selling plan". The javascript block below strips the empty
+      entry while the browser builds the submission, so with JavaScript the
+      request carries no selling_plan key at all;
+    - only plans the selected variant has an allocation for are listed, so a
+      submitted plan is always one `/cart/add` will accept;
+    - if the product `requires_selling_plan`, the One-time option is omitted
+      and the first listed plan is pre-selected.
+
+  With no product picked the section renders an onboarding placeholder in the
+  theme editor and nothing at all on the storefront.
+
+  Section settings
+    product             product   the refill SKU
+    eyebrow             text      brass label
+    heading             text      Syne display heading
+    body                richtext  Inter body copy
+    button_label        text      submit label
+    show_subscription   checkbox  list selling plans when the product has them
+    padding-block-*     range     consumed by the `spacing-style` class
+
+  Markup contract
+    .refill-upsell[data-refill-upsell]        two-column grid on desktop
+    form.refill-upsell__form                  native product form
+    fieldset.refill-upsell__plans             radio group (only with plans)
+    label.refill-plan > input.refill-plan__input
+{%- endcomment -%}
+
+{%- liquid
+  assign refill_product = section.settings.product
+  assign has_product = false
+  if refill_product != blank
+    assign has_product = true
+  endif
+
+  if has_product
+    assign refill_variant = refill_product.selected_or_first_available_variant
+    if refill_variant == blank
+      assign refill_variant = refill_product.variants.first
+    endif
+
+    assign refill_image = refill_variant.featured_image | default: refill_product.featured_image
+    assign form_id = 'cabin-refill-form-' | append: section.id
+    assign form_label = 'Add ' | append: refill_product.title | append: ' to cart' | escape
+
+    # Only plans the selected variant can be bought on are offered.
+    assign plan_count = refill_variant.selling_plan_allocations.size | default: 0
+
+    assign show_plans = false
+    if plan_count > 0
+      if section.settings.show_subscription or refill_product.requires_selling_plan
+        assign show_plans = true
+      endif
+    endif
+
+    assign allow_one_time = true
+    if refill_product.requires_selling_plan
+      assign allow_one_time = false
+    endif
+
+    assign show_compare = false
+    if refill_variant.compare_at_price > refill_variant.price
+      assign show_compare = true
+    endif
+
+    assign can_add = false
+    if refill_variant != blank and refill_variant.available
+      assign can_add = true
+    endif
+
+    assign show_variant_title = false
+    if refill_product.variants.size > 1 and refill_variant.title != 'Default Title'
+      assign show_variant_title = true
+    endif
+
+    assign button_label = section.settings.button_label | default: 'Add refill'
+  endif
+-%}
+
+{%- if has_product or request.design_mode -%}
+  <div class="section-background"></div>
+  <div
+    class="section section--page-width spacing-style cabin-theme"
+    style="{% render 'spacing-padding', settings: section.settings %}"
+  >
+    {%- if has_product -%}
+      <div class="refill-upsell refill-upsell--product" data-refill-upsell>
+        <div class="refill-upsell__media">
+          <a
+            class="refill-upsell__media-link"
+            href="{{ refill_product.url }}"
+            aria-label="View {{ refill_product.title | escape }}"
+          >
+            {%- if refill_image != blank -%}
+              {{
+                refill_image
+                | image_url: width: 1200
+                | image_tag:
+                  widths: '360, 540, 720, 900, 1200',
+                  sizes: '(min-width: 750px) 40vw, calc(100vw - 32px)',
+                  loading: 'lazy',
+                  class: 'refill-upsell__img'
+              }}
+            {%- else -%}
+              {{ 'product-1' | placeholder_svg_tag: 'refill-upsell__placeholder-svg' }}
+            {%- endif -%}
+          </a>
+        </div>
+
+        <div class="refill-upsell__content">
+          {%- if section.settings.eyebrow != blank -%}
+            <p class="refill-upsell__eyebrow">{{ section.settings.eyebrow }}</p>
+          {%- endif -%}
+
+          {%- if section.settings.heading != blank -%}
+            <h2 class="refill-upsell__heading">{{ section.settings.heading }}</h2>
+          {%- endif -%}
+
+          {%- if section.settings.body != blank -%}
+            <div class="refill-upsell__body">
+              {{ section.settings.body }}
+            </div>
+          {%- endif -%}
+
+          <div class="refill-upsell__product">
+            <span class="refill-upsell__title">
+              {{- refill_product.title -}}
+              {%- if show_variant_title -%}
+                <span class="refill-upsell__variant"> · {{ refill_variant.title }}</span>
+              {%- endif -%}
+            </span>
+            <span class="refill-upsell__price">
+              {%- if refill_product.price_varies -%}
+                <span class="refill-upsell__price-from">From</span>
+              {%- endif -%}
+              <span class="refill-upsell__amount">{{ refill_product.price_min | money }}</span>
+              {%- if show_compare -%}
+                <s class="refill-upsell__compare">
+                  <span class="cabin-visually-hidden">Previously </span>
+                  {{- refill_variant.compare_at_price | money -}}
+                </s>
+              {%- endif -%}
+            </span>
+          </div>
+
+          {%- form 'product',
+            refill_product,
+            id: form_id,
+            class: 'refill-upsell__form',
+            aria-label: form_label,
+            data-cabin-refill-form: 'true'
+          -%}
+            <input type="hidden" name="id" value="{{ refill_variant.id }}">
+
+            {%- if show_plans -%}
+              <fieldset class="refill-upsell__plans">
+                <legend class="refill-upsell__legend">Purchase options</legend>
+
+                {%- if allow_one_time -%}
+                  <label class="refill-plan">
+                    <input
+                      type="radio"
+                      class="refill-plan__input"
+                      name="selling_plan"
+                      value=""
+                      checked
+                    >
+                    <span class="refill-plan__control" aria-hidden="true"></span>
+                    <span class="refill-plan__text">
+                      <span class="refill-plan__name">One-time</span>
+                      <span class="refill-plan__meta">Single order, delivered once.</span>
+                    </span>
+                    <span class="refill-plan__price">
+                      <span class="refill-plan__amount">{{ refill_variant.price | money }}</span>
+                    </span>
+                  </label>
+                {%- endif -%}
+
+                {%- assign plan_selected = false -%}
+                {%- for group in refill_product.selling_plan_groups -%}
+                  {%- liquid
+                    assign group_has_plan = false
+                    for candidate in refill_variant.selling_plan_allocations
+                      if candidate.selling_plan_group_id == group.id
+                        assign group_has_plan = true
+                        break
+                      endif
+                    endfor
+                  -%}
+
+                  {%- if group_has_plan and refill_product.selling_plan_groups.size > 1 and group.name != blank -%}
+                    <span class="refill-upsell__group">{{ group.name | escape }}</span>
+                  {%- endif -%}
+
+                  {%- for plan in group.selling_plans -%}
+                    {%- liquid
+                      assign allocation = nil
+                      for candidate in refill_variant.selling_plan_allocations
+                        if candidate.selling_plan.id == plan.id
+                          assign allocation = candidate
+                          break
+                        endif
+                      endfor
+
+                      if allocation == nil
+                        continue
+                      endif
+
+                      assign plan_checked = false
+                      if allow_one_time == false and plan_selected == false
+                        assign plan_checked = true
+                        assign plan_selected = true
+                      endif
+
+                      assign adjustment = plan.price_adjustments.first
+                    -%}
+                    <label class="refill-plan">
+                      <input
+                        type="radio"
+                        class="refill-plan__input"
+                        name="selling_plan"
+                        value="{{ plan.id }}"
+                        {% if plan_checked %}
+                          checked
+                        {% endif %}
+                      >
+                      <span class="refill-plan__control" aria-hidden="true"></span>
+                      <span class="refill-plan__text">
+                        <span class="refill-plan__name">{{ plan.name | escape }}</span>
+                        {%- if plan.description != blank -%}
+                          <span class="refill-plan__meta">{{ plan.description | escape }}</span>
+                        {%- endif -%}
+                      </span>
+                      <span class="refill-plan__price">
+                        <span class="refill-plan__amount">{{ allocation.price | money }}</span>
+                        {%- if allocation.compare_at_price > allocation.price -%}
+                          <s class="refill-plan__compare">
+                            <span class="cabin-visually-hidden">Previously </span>
+                            {{- allocation.compare_at_price | money -}}
+                          </s>
+                        {%- endif -%}
+                        {%- if adjustment.value_type == 'percentage' and adjustment.value > 0 -%}
+                          <span class="refill-plan__save">Save {{ adjustment.value }}%</span>
+                        {%- elsif adjustment.value_type == 'fixed_amount' and adjustment.value > 0 -%}
+                          <span class="refill-plan__save">Save {{ adjustment.value | money }}</span>
+                        {%- endif -%}
+                      </span>
+                    </label>
+                  {%- endfor -%}
+                {%- endfor -%}
+              </fieldset>
+            {%- endif -%}
+
+            <div class="refill-upsell__actions">
+              <button
+                type="submit"
+                name="add"
+                class="refill-upsell__submit cabin-btn"
+                {% unless can_add %}
+                  disabled
+                {% endunless %}
+              >
+                {%- if can_add -%}
+                  {{ button_label }}
+                {%- else -%}
+                  Sold out
+                {%- endif -%}
+              </button>
+              {%- unless can_add -%}
+                <p class="refill-upsell__unavailable">This refill is not available at the moment.</p>
+              {%- endunless -%}
+            </div>
+          {%- endform -%}
+        </div>
+      </div>
+    {%- else -%}
+      <div class="refill-upsell refill-upsell--placeholder" data-refill-upsell>
+        <p class="refill-upsell__eyebrow">Refill upsell</p>
+        <p class="refill-upsell__placeholder-title">Choose the refill product</p>
+        <p class="refill-upsell__placeholder-text">
+          Select the 10ml Reserve refill under "Refill product" in the section settings.
+          Nothing renders on the storefront until a product is chosen.
+        </p>
+      </div>
+    {%- endif -%}
+  </div>
+{%- endif -%}
+
+{% stylesheet %}
+  /* ------------------------------------------------------------------
+     CABIN-09 refill upsell
+     Tokens come from assets/cabin-design-tokens.css (loaded globally).
+     ------------------------------------------------------------------ */
+
+  .refill-upsell {
+    display: grid;
+    gap: var(--cabin-space-6);
+    width: 100%;
+    min-width: 0;
+  }
+
+  @media screen and (min-width: 750px) {
+    .refill-upsell--product {
+      grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+      gap: var(--cabin-space-8);
+      align-items: center;
+    }
+  }
+
+  /* Media ------------------------------------------------------------- */
+
+  .refill-upsell__media {
+    position: relative;
+    overflow: hidden;
+    aspect-ratio: 1 / 1;
+    background: var(--cabin-elevation);
+    border: 1px solid var(--cabin-border);
+    border-radius: var(--cabin-radius-md);
+    box-shadow: var(--cabin-shadow-card);
+  }
+
+  @media screen and (min-width: 750px) {
+    .refill-upsell__media {
+      aspect-ratio: 4 / 5;
+    }
+  }
+
+  .refill-upsell__media-link {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+  }
+
+  .refill-upsell__media-link:focus-visible {
+    outline: 2px solid var(--cabin-brass);
+    outline-offset: 4px;
+  }
+
+  .refill-upsell__img,
+  .refill-upsell__placeholder-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--cabin-dur-slow) var(--cabin-ease-out);
+  }
+
+  .refill-upsell__placeholder-svg {
+    fill: var(--cabin-border-strong);
+    background: var(--cabin-elevation-2);
+  }
+
+  .refill-upsell__media-link:hover .refill-upsell__img {
+    transform: scale(1.02);
+  }
+
+  /* Copy -------------------------------------------------------------- */
+
+  .refill-upsell__content {
+    display: grid;
+    gap: var(--cabin-space-5);
+    align-content: center;
+    min-width: 0;
+  }
+
+  .refill-upsell__eyebrow {
+    margin: 0;
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-xs);
+    font-weight: 500;
+    letter-spacing: var(--cabin-track-label);
+    text-transform: uppercase;
+    color: var(--cabin-brass);
+  }
+
+  .refill-upsell__heading {
+    margin: 0;
+    font-family: var(--cabin-font-display);
+    font-size: var(--cabin-fs-xl);
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: var(--cabin-track-display);
+    text-transform: uppercase;
+    color: var(--cabin-display);
+    overflow-wrap: anywhere;
+  }
+
+  @media screen and (min-width: 750px) {
+    .refill-upsell__heading {
+      font-size: clamp(1.75rem, 2.8vw, 2.5rem);
+    }
+  }
+
+  .refill-upsell__body {
+    max-width: 52ch;
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-md);
+    font-weight: 400;
+    line-height: 1.65;
+    color: var(--cabin-text);
+  }
+
+  .refill-upsell__body > :first-child {
+    margin-block-start: 0;
+  }
+
+  .refill-upsell__body > :last-child {
+    margin-block-end: 0;
+  }
+
+  .refill-upsell__body p {
+    margin-block: 0 var(--cabin-space-4);
+  }
+
+  .refill-upsell__body strong {
+    font-weight: 500;
+    color: var(--cabin-display);
+  }
+
+  .refill-upsell__body a {
+    color: var(--cabin-display);
+    text-decoration: underline;
+    text-decoration-color: var(--cabin-brass);
+    text-underline-offset: 0.2em;
+    transition: color var(--cabin-dur-fast) var(--cabin-ease-out);
+  }
+
+  .refill-upsell__body a:hover {
+    color: var(--cabin-brass);
+  }
+
+  /* Product line + price ---------------------------------------------- */
+
+  .refill-upsell__product {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--cabin-space-2) var(--cabin-space-5);
+    padding-block-start: var(--cabin-space-5);
+    border-block-start: 1px solid var(--cabin-border);
+  }
+
+  .refill-upsell__title {
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-sm);
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: var(--cabin-display);
+  }
+
+  .refill-upsell__variant {
+    font-weight: 400;
+    color: var(--cabin-text-muted);
+  }
+
+  .refill-upsell__price {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--cabin-space-2);
+    font-family: var(--cabin-font-ui);
+    font-variant-numeric: tabular-nums;
+    color: var(--cabin-display);
+  }
+
+  .refill-upsell__price-from {
+    font-size: var(--cabin-fs-xs);
+    font-weight: 500;
+    letter-spacing: var(--cabin-track-label);
+    text-transform: uppercase;
+    color: var(--cabin-text-muted);
+  }
+
+  .refill-upsell__amount {
+    font-size: var(--cabin-fs-lg);
+    font-weight: 500;
+  }
+
+  .refill-upsell__compare {
+    font-size: var(--cabin-fs-sm);
+    color: var(--cabin-text-muted);
+    text-decoration-color: var(--cabin-text-muted);
+  }
+
+  /* Form -------------------------------------------------------------- */
+
+  .refill-upsell__form {
+    display: grid;
+    gap: var(--cabin-space-5);
+    min-width: 0;
+  }
+
+  .refill-upsell__plans {
+    display: grid;
+    gap: var(--cabin-space-2);
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .refill-upsell__legend {
+    padding: 0;
+    margin-block-end: var(--cabin-space-3);
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-xs);
+    font-weight: 500;
+    letter-spacing: var(--cabin-track-label);
+    text-transform: uppercase;
+    color: var(--cabin-text-muted);
+  }
+
+  .refill-upsell__group {
+    margin-block-start: var(--cabin-space-2);
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-2xs);
+    font-weight: 500;
+    letter-spacing: var(--cabin-track-label);
+    text-transform: uppercase;
+    color: var(--cabin-text-muted);
+  }
+
+  .refill-plan {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--cabin-space-4);
+    padding: var(--cabin-space-4);
+    border: 1px solid var(--cabin-border);
+    border-radius: var(--cabin-radius-sm);
+    background: var(--cabin-elevation);
+    cursor: pointer;
+    transition:
+      border-color var(--cabin-dur-fast) var(--cabin-ease-out),
+      background-color var(--cabin-dur-fast) var(--cabin-ease-out);
+  }
+
+  .refill-plan:hover {
+    border-color: var(--cabin-border-strong);
+  }
+
+  .refill-plan:has(.refill-plan__input:checked) {
+    border-color: var(--cabin-brass);
+    background-color: var(--cabin-elevation-2);
+  }
+
+  /* The native radio stays in the tab order but is drawn by the control span. */
+  .refill-plan__input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .refill-plan__control {
+    display: grid;
+    place-items: center;
+    width: 1.125rem;
+    height: 1.125rem;
+    border: 1px solid var(--cabin-border-control);
+    border-radius: 50%;
+    transition: border-color var(--cabin-dur-fast) var(--cabin-ease-out);
+  }
+
+  .refill-plan__control::after {
+    content: '';
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--cabin-brass);
+    transform: scale(0);
+    transition: transform var(--cabin-dur-base) var(--cabin-ease-out);
+  }
+
+  .refill-plan__input:checked + .refill-plan__control {
+    border-color: var(--cabin-brass);
+  }
+
+  .refill-plan__input:checked + .refill-plan__control::after {
+    transform: scale(1);
+  }
+
+  /* Focus ring: on the control by default, promoted to the whole card where :has() exists. */
+  .refill-plan__input:focus-visible + .refill-plan__control {
+    outline: 2px solid var(--cabin-brass);
+    outline-offset: 3px;
+  }
+
+  @supports selector(:has(a)) {
+    .refill-plan__input:focus-visible + .refill-plan__control {
+      outline: none;
+    }
+
+    .refill-plan:has(.refill-plan__input:focus-visible) {
+      outline: 2px solid var(--cabin-brass);
+      outline-offset: 3px;
+    }
+  }
+
+  .refill-plan__text {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .refill-plan__name {
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-md);
+    font-weight: 500;
+    color: var(--cabin-display);
+    overflow-wrap: anywhere;
+  }
+
+  .refill-plan__meta {
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-sm);
+    line-height: 1.45;
+    color: var(--cabin-text-muted);
+  }
+
+  .refill-plan__price {
+    display: grid;
+    justify-items: end;
+    gap: 2px;
+    text-align: end;
+    font-family: var(--cabin-font-ui);
+    font-variant-numeric: tabular-nums;
+    color: var(--cabin-display);
+  }
+
+  .refill-plan__amount {
+    font-size: var(--cabin-fs-md);
+    font-weight: 500;
+  }
+
+  .refill-plan__compare {
+    font-size: var(--cabin-fs-sm);
+    color: var(--cabin-text-muted);
+    text-decoration-color: var(--cabin-text-muted);
+  }
+
+  .refill-plan__save {
+    font-size: var(--cabin-fs-2xs);
+    font-weight: 500;
+    letter-spacing: var(--cabin-track-label);
+    text-transform: uppercase;
+    color: var(--cabin-brass);
+  }
+
+  .refill-upsell__actions {
+    display: grid;
+    gap: var(--cabin-space-3);
+  }
+
+  .refill-upsell__submit {
+    width: 100%;
+  }
+
+  @media screen and (min-width: 750px) {
+    .refill-upsell__submit {
+      width: auto;
+      min-width: 14rem;
+      justify-self: start;
+    }
+  }
+
+  .refill-upsell__unavailable {
+    margin: 0;
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-sm);
+    color: var(--cabin-text-muted);
+  }
+
+  /* Editor placeholder (no product picked) ---------------------------- */
+
+  .refill-upsell--placeholder {
+    justify-items: center;
+    gap: var(--cabin-space-3);
+    padding: var(--cabin-space-7) var(--cabin-space-5);
+    border: 1px dashed var(--cabin-border-strong);
+    border-radius: var(--cabin-radius-md);
+    text-align: center;
+  }
+
+  .refill-upsell__placeholder-title {
+    margin: 0;
+    font-family: var(--cabin-font-display);
+    font-size: var(--cabin-fs-lg);
+    font-weight: 600;
+    letter-spacing: var(--cabin-track-display);
+    text-transform: uppercase;
+    color: var(--cabin-display);
+  }
+
+  .refill-upsell__placeholder-text {
+    max-width: 44ch;
+    margin: 0;
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-sm);
+    line-height: 1.6;
+    color: var(--cabin-text-muted);
+  }
+{% endstylesheet %}
+
+{% javascript %}
+  /**
+   * CABIN-09 refill upsell: selling plan submission.
+   *
+   * The "One-time" radio shares the `selling_plan` name with the plan radios
+   * so the group is mutually exclusive without JavaScript. Its value is empty,
+   * which Shopify documents as "no selling plan". This listener removes the
+   * empty entry while the browser builds the submission, so the request
+   * carries no `selling_plan` key at all. It is delegated at document level,
+   * so it survives theme editor re-renders and needs no re-initialisation.
+   */
+  document.addEventListener('formdata', (event) => {
+    const form = event.target;
+
+    if (!(form instanceof HTMLFormElement) || !form.hasAttribute('data-cabin-refill-form')) {
+      return;
+    }
+
+    const plan = event.formData.get('selling_plan');
+
+    if (plan === null || plan === '') {
+      event.formData.delete('selling_plan');
+    }
+  });
+{% endjavascript %}
+
+{% schema %}
+{
+  "name": "Refill upsell",
+  "tag": "section",
+  "class": "section-wrapper cabin-section",
+  "disabled_on": {
+    "groups": ["header", "footer"]
+  },
+  "settings": [
+    {
+      "type": "product",
+      "id": "product",
+      "label": "Refill product",
+      "info": "The 10ml Reserve refill SKU. Uses its first available variant. Nothing renders on the storefront until a product is chosen."
+    },
+    {
+      "type": "text",
+      "id": "eyebrow",
+      "label": "Eyebrow",
+      "default": "The Reserve"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Never buy the glass twice."
+    },
+    {
+      "type": "richtext",
+      "id": "body",
+      "label": "Body",
+      "default": "<p>Refills from £9.50. The Reserve sends two 10ml refills every 60 days for £16, delivered. Cancel at any time. Subscribers take 15% off hardware.</p>"
+    },
+    {
+      "type": "text",
+      "id": "button_label",
+      "label": "Button label",
+      "default": "Add refill"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_subscription",
+      "label": "Show subscription options",
+      "info": "Lists the product's selling plans next to a one-time option. Requires a subscription app that has attached selling plans to the refill product.",
+      "default": true
+    },
+    {
+      "type": "header",
+      "content": "Padding"
+    },
+    {
+      "type": "range",
+      "id": "padding-block-start",
+      "label": "Top",
+      "min": 0,
+      "max": 100,
+      "step": 4,
+      "unit": "px",
+      "default": 48
+    },
+    {
+      "type": "range",
+      "id": "padding-block-end",
+      "label": "Bottom",
+      "min": 0,
+      "max": 100,
+      "step": 4,
+      "unit": "px",
+      "default": 48
+    }
+  ],
+  "presets": [
+    {
+      "name": "Refill subscription upsell",
+      "category": "Product"
+    }
+  ]
+}
+{% endschema %}

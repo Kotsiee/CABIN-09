@@ -1,0 +1,387 @@
+{% comment %}
+  CABIN-09 · Scent fan hero
+
+  Product-page wrapper for the scent fan (snippets/product-scent-fan.liquid) in
+  its `pdp` mode: three fanned note buttons behind the vessel cut-out, revealed
+  from collapsed on first viewport intersection, each opening the note detail
+  modal built by assets/scent-modal.js. The script is loaded deferred from here
+  and every style for the fan and the modal lives with the snippet.
+
+  Note data comes from the `cabin.top_note` / `cabin.heart_note` /
+  `cabin.base_note` product metafields. Every tier has an editor fallback in
+  this section (name, alias, profile, chemistry, molecular weight) that is used
+  only when its metafield is blank, so the section previews fully on a store
+  with no custom data. A metafield always wins over its fallback.
+
+  Section settings
+    image               image_picker  vessel override; defaults to product.featured_image
+    eyebrow             text          brass label above the heading
+    heading             text          Syne display heading
+    caption             text          muted label below the fan; hidden when no note resolves
+    max_width           range         width of the stage column in px
+    top_* / heart_* / base_*          fallback note fields, see above
+    padding-block-*     range         consumed by the `spacing-style` class
+
+  Markup contract
+    .scent-hero[data-scent-hero]      centred column, max-width from the setting
+    .scent-hero__header               eyebrow + h2
+    .scent-hero__stage                holds the .scent-fan--pdp (see the snippet for its contract)
+    .scent-hero__caption              caption with hairlines either side
+{% endcomment %}
+
+{%- liquid
+  assign hero_image = section.settings.image
+  if hero_image == blank
+    assign hero_image = product.featured_image
+  endif
+
+  # The stage never exceeds max_width, so the vessel image is sized against it on desktop.
+  assign hero_sizes = '(min-width: 750px) ' | append: section.settings.max_width | append: 'px, 100vw'
+-%}
+
+{%- capture scent_fan -%}
+  {% render 'product-scent-fan',
+    product: product,
+    mode: 'pdp',
+    image: hero_image,
+    sizes: hero_sizes,
+    top_name: section.settings.top_name,
+    top_alias: section.settings.top_alias,
+    top_profile: section.settings.top_profile,
+    top_chemistry: section.settings.top_chemistry,
+    top_molecule: section.settings.top_molecule,
+    heart_name: section.settings.heart_name,
+    heart_alias: section.settings.heart_alias,
+    heart_profile: section.settings.heart_profile,
+    heart_chemistry: section.settings.heart_chemistry,
+    heart_molecule: section.settings.heart_molecule,
+    base_name: section.settings.base_name,
+    base_alias: section.settings.base_alias,
+    base_profile: section.settings.base_profile,
+    base_chemistry: section.settings.base_chemistry,
+    base_molecule: section.settings.base_molecule
+  %}
+{%- endcapture -%}
+
+{%- liquid
+  # In pdp mode the snippet still renders the vessel when no tier resolves to a
+  # name, flagging the root with `is-empty`. There is nothing to select then, so
+  # the caption is dropped and the editor gets an onboarding line instead.
+  assign fan_is_empty = false
+  if scent_fan contains 'is-empty'
+    assign fan_is_empty = true
+  endif
+-%}
+
+<div class="section-background"></div>
+<div
+  class="section section--page-width spacing-style cabin-theme scent-hero-section"
+  style="{% render 'spacing-padding', settings: section.settings %} --scent-hero-max-width: {{ section.settings.max_width }}px;"
+>
+  <div class="scent-hero" data-scent-hero>
+    {%- if section.settings.eyebrow != blank or section.settings.heading != blank -%}
+      <header class="scent-hero__header">
+        {%- if section.settings.eyebrow != blank -%}
+          <p class="scent-hero__eyebrow cabin-eyebrow">{{ section.settings.eyebrow }}</p>
+        {%- endif -%}
+        {%- if section.settings.heading != blank -%}
+          <h2 class="scent-hero__heading cabin-display cabin-display--md">{{ section.settings.heading }}</h2>
+        {%- endif -%}
+      </header>
+    {%- endif -%}
+
+    <div class="scent-hero__stage">
+      {{ scent_fan }}
+    </div>
+
+    {%- if section.settings.caption != blank and fan_is_empty == false -%}
+      <p class="scent-hero__caption cabin-label">{{ section.settings.caption }}</p>
+    {%- endif -%}
+
+    {%- if fan_is_empty and request.design_mode -%}
+      <p class="scent-hero__onboarding cabin-body">
+        No scent notes yet. Add the cabin.top_note, cabin.heart_note and cabin.base_note metafields to this
+        product, or fill in the fallback notes in the section settings.
+      </p>
+    {%- endif -%}
+  </div>
+</div>
+
+<script src="{{ 'scent-modal.js' | asset_url }}" defer="defer"></script>
+
+{% stylesheet %}
+  /* --------------------------------------------------------------------------
+     Scent fan hero
+     A single centred column. The width comes from the section's max_width
+     setting through --scent-hero-max-width, set on the section wrapper.
+     -------------------------------------------------------------------------- */
+  .scent-hero {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: var(--scent-hero-max-width, 560px);
+    margin-inline: auto;
+  }
+
+  .scent-hero__header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--cabin-space-3);
+    margin-bottom: var(--cabin-space-6);
+    text-align: center;
+  }
+
+  .scent-hero__eyebrow {
+    margin: 0;
+  }
+
+  .scent-hero__heading {
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  /* The stage carries a soft brass pool under the vessel so the cut-out reads as
+     lit rather than pasted on the canvas. It sits below the fan in paint order. */
+  .scent-hero__stage {
+    position: relative;
+  }
+
+  .scent-hero__stage::before {
+    content: '';
+    position: absolute;
+    inset: 20% 0 0;
+    z-index: 0;
+    background: radial-gradient(ellipse 55% 45% at 50% 72%, var(--cabin-brass-glow), transparent 70%);
+    pointer-events: none;
+  }
+
+  .scent-hero__stage > .scent-fan {
+    position: relative;
+  }
+
+  /* Caption: muted label between two hairlines */
+  .scent-hero__caption {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--cabin-space-3);
+    margin: var(--cabin-space-5) 0 0;
+    text-align: center;
+  }
+
+  .scent-hero__caption::before,
+  .scent-hero__caption::after {
+    content: '';
+    flex: 0 0 1.5rem;
+    height: 1px;
+    background: var(--cabin-border-strong);
+  }
+
+  /* Theme editor only: shown when no tier resolved to a name */
+  .scent-hero__onboarding {
+    max-width: 36rem;
+    margin: var(--cabin-space-5) auto 0;
+    padding: var(--cabin-space-4) var(--cabin-space-5);
+    border: 1px dashed var(--cabin-border-strong);
+    border-radius: var(--cabin-radius-md);
+    color: var(--cabin-text-muted);
+    text-align: center;
+  }
+
+  @media screen and (max-width: 749px) {
+    .scent-hero__header {
+      margin-bottom: var(--cabin-space-5);
+    }
+
+    .scent-hero__caption {
+      margin-top: var(--cabin-space-4);
+    }
+
+    .scent-hero__caption::before,
+    .scent-hero__caption::after {
+      flex-basis: 1rem;
+    }
+  }
+{% endstylesheet %}
+
+{% schema %}
+{
+  "name": "Scent fan hero",
+  "tag": "section",
+  "class": "section-wrapper cabin-section",
+  "enabled_on": {
+    "templates": ["product"]
+  },
+  "settings": [
+    {
+      "type": "image_picker",
+      "id": "image",
+      "label": "Vessel image",
+      "info": "A transparent cut-out reads best. Defaults to the product's featured image."
+    },
+    {
+      "type": "text",
+      "id": "eyebrow",
+      "label": "Eyebrow",
+      "default": "Scent pyramid"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Top · Heart · Base"
+    },
+    {
+      "type": "text",
+      "id": "caption",
+      "label": "Caption",
+      "default": "Select a note to read its cabin chemistry"
+    },
+    {
+      "type": "range",
+      "id": "max_width",
+      "label": "Stage width",
+      "min": 320,
+      "max": 900,
+      "step": 10,
+      "unit": "px",
+      "default": 560
+    },
+    {
+      "type": "header",
+      "content": "Top note fallback",
+      "info": "Used when the cabin.top_note metafield is empty."
+    },
+    {
+      "type": "text",
+      "id": "top_name",
+      "label": "Name",
+      "default": "Bitter Almond"
+    },
+    {
+      "type": "text",
+      "id": "top_alias",
+      "label": "Alias",
+      "default": "Benzaldehyde accord"
+    },
+    {
+      "type": "textarea",
+      "id": "top_profile",
+      "label": "What it smells like",
+      "default": "Marzipan without the sugar; a cool, slightly metallic snap."
+    },
+    {
+      "type": "textarea",
+      "id": "top_chemistry",
+      "label": "Why it works in a cabin",
+      "default": "Low MW (106) so it leads the headspace hit on entry, then hands off within the first 20 minutes. Kept below 2% to stay under the CRC/allergen thresholds; no staining risk at this load."
+    },
+    {
+      "type": "text",
+      "id": "top_molecule",
+      "label": "Molecular weight",
+      "default": "106 g/mol"
+    },
+    {
+      "type": "header",
+      "content": "Heart note fallback",
+      "info": "Used when the cabin.heart_note metafield is empty."
+    },
+    {
+      "type": "text",
+      "id": "heart_name",
+      "label": "Name",
+      "default": "Cashmeran"
+    },
+    {
+      "type": "text",
+      "id": "heart_alias",
+      "label": "Alias",
+      "default": "DPMI"
+    },
+    {
+      "type": "textarea",
+      "id": "heart_profile",
+      "label": "What it smells like",
+      "default": "Warm, dry, woody-musky; powdered suede over sanded cedar."
+    },
+    {
+      "type": "textarea",
+      "id": "heart_chemistry",
+      "label": "Why it works in a cabin",
+      "default": "MW 206, mid-volatility, high substantivity: steady emission under HVAC airflow. Colourless, non-crystallising, will not brown beech."
+    },
+    {
+      "type": "text",
+      "id": "heart_molecule",
+      "label": "Molecular weight",
+      "default": "206 g/mol"
+    },
+    {
+      "type": "header",
+      "content": "Base note fallback",
+      "info": "Used when the cabin.base_note metafield is empty."
+    },
+    {
+      "type": "text",
+      "id": "base_name",
+      "label": "Name",
+      "default": "Labdanum"
+    },
+    {
+      "type": "text",
+      "id": "base_alias",
+      "label": "Alias",
+      "default": "Cistus resinoid"
+    },
+    {
+      "type": "textarea",
+      "id": "base_profile",
+      "label": "What it smells like",
+      "default": "Ambered resin, leather, a sun-warmed sweetness."
+    },
+    {
+      "type": "textarea",
+      "id": "base_chemistry",
+      "label": "Why it works in a cabin",
+      "default": "Resinous sesquiterpenes and high-MW acids sit in the wood grain and release for weeks. Anchors the heart so week-five projection is still legible. Mild colour watch: pale amber tint, non-staining on trim at 25% load."
+    },
+    {
+      "type": "text",
+      "id": "base_molecule",
+      "label": "Molecular weight",
+      "default": "322 g/mol (labdanolic acid)"
+    },
+    {
+      "type": "header",
+      "content": "Padding"
+    },
+    {
+      "type": "range",
+      "id": "padding-block-start",
+      "label": "Top",
+      "min": 0,
+      "max": 100,
+      "step": 4,
+      "unit": "px",
+      "default": 48
+    },
+    {
+      "type": "range",
+      "id": "padding-block-end",
+      "label": "Bottom",
+      "min": 0,
+      "max": 100,
+      "step": 4,
+      "unit": "px",
+      "default": 48
+    }
+  ],
+  "presets": [
+    {
+      "name": "Scent fan hero",
+      "category": "Product"
+    }
+  ]
+}
+{% endschema %}

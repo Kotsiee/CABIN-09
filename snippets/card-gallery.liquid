@@ -3,6 +3,13 @@
   Settings allow for a full slideshow, showing only the first image, or showing the second image when hovering.
   Note: When the product card itself is in a carousel layout, the card-gallery's carousel is disabled with JavaScript.
 
+  CABIN-09: when the block's `scent_fan` setting is on and the product carries any `cabin.top_note`,
+  `cabin.heart_note` or `cabin.base_note` metafield, the media is replaced by the scent note fan
+  (`product-scent-fan` snippet in grid mode). Badges and quick add still render on top of it.
+  Both callers expose the setting: `_product-card-gallery` (default on) and `_featured-product-gallery`
+  (default off). Any other block rendering this snippet without a `scent_fan` setting gets the fan,
+  because `nil != false` is true in Liquid.
+
   @param [children] - Additional content rendered below the card gallery
   @param [section] - The section object the snippet is rendered in
   @param [block] - The block object the snippet is rendered in
@@ -61,18 +68,43 @@
       assign media_fit = block_settings.constrain_to_viewport
     endif
   endif
+
+  # CABIN-09: a product with any scent note metafield swaps its media for the
+  # scent note fan. Both metaobject references and plain text notes count.
+  assign has_scent_notes = false
+  if product != blank
+    if product.metafields.cabin.top_note.value != blank or product.metafields.cabin.heart_note.value != blank or product.metafields.cabin.base_note.value != blank
+      assign has_scent_notes = true
+    endif
+  endif
+
+  # The fan snippet renders nothing when no note resolves to a name, so the
+  # markup is captured first and the gallery falls back to the regular media
+  # whenever it comes back empty. Rendering it here means `use_scent_fan` is
+  # known before the gallery element and its hover handlers are written.
+  assign use_scent_fan = false
+  if block_settings.scent_fan != false and has_scent_notes and product.media.size > 0
+    capture scent_fan_markup
+      render 'product-scent-fan', product: product, mode: 'grid', sizes: image_sizes
+    endcapture
+    assign scent_fan_markup = scent_fan_markup | strip
+    if scent_fan_markup != blank
+      assign use_scent_fan = true
+    endif
+  endif
 %}
 
 <div
   ref="cardGallery"
-  class="card-gallery card-gallery-{{ block.id }} spacing-style border-style{% if has_badges %} card-gallery--badge-{{ badge_position }}{% endif %}"
+  class="card-gallery card-gallery-{{ block.id }} spacing-style border-style{% if has_badges %} card-gallery--badge-{{ badge_position }}{% endif %}{% if use_scent_fan %} card-gallery--scent-fan{% endif %}"
   style="
     {% render 'border-override', settings: block_settings %}
     {% render 'spacing-style', settings: block_settings %}
     --gallery-aspect-ratio: {{ ratio }};
   "
   data-product-id="{{ product.id }}"
-  {% if settings.show_second_image_on_hover and product.media.size > 1 %}
+  {% # The fan has no slides to step through, so fan cards skip the hover preview handlers. %}
+  {% if use_scent_fan == false and settings.show_second_image_on_hover and product.media.size > 1 %}
     on:pointerenter="/previewImage"
     on:pointerleave="/resetImage"
   {% endif %}
@@ -89,118 +121,125 @@
       href="{{ product.url }}"
       aria-label="{{- product.title -}}"
     >
-      {% liquid
-        assign featured_media = product.featured_media
-
-        assign featured_media_loading = 'lazy'
-        assign featured_media_sizes = 'auto, ' | append: image_sizes
-        if section.index == null or section.index < 5
-          assign featured_media_loading = 'eager'
-          assign featured_media_sizes = image_sizes
-        endif
-
-        # The class differs per media only by media_type; the base template and the
-        # constrain-height suffix are the same for every slide, so build them once.
-        assign media_class = 'product-media-container media-fit product-media-container--[media_type]'
-        assign media_class_suffix = ''
-        if constrain_to_viewport
-          assign media_class_suffix = ' constrain-height'
-        endif
-
-        assign featured_media_class = media_class | replace: '[media_type]', featured_media.media_type | append: media_class_suffix
-      %}
-      {%- if product.media.size == 1 -%}
-        <div
-          class="{{ featured_media_class }}"
-          style="--product-media-fit: {{ media_fit | default: 'cover' }};"
-        >
-          {% render 'product-media',
-            media: featured_media,
-            sizes: featured_media_sizes,
-            loading: featured_media_loading,
-            preview_image_only: true
-          %}
+      {%- if use_scent_fan -%}
+        {% # The wrapper carries --gallery-aspect-ratio so image_ratio still sets the card height. %}
+        <div class="card-gallery__scent-fan">
+          {{ scent_fan_markup }}
         </div>
       {%- else -%}
         {% liquid
-          # Check if there are generic media that are not variant images
-          assign variant_images = product.images | where: 'attached_to_variant?', true | map: 'src'
-          assign generic_media_size = product.media.size | minus: variant_images.size
+          assign featured_media = product.featured_media
 
-          # Sort media so product.featured_media.preview_image comes first as that is the most relevant image to display
-          # product.featured_media updates based on search context and filters applied
-
-          assign other_media = product.media | reject: 'src', product.featured_media
-          assign media_list_to_show = product.featured_media | concat: other_media
-
-          if product.media.size > 2 and generic_media_size > 0
-            assign show_arrows = true
+          assign featured_media_loading = 'lazy'
+          assign featured_media_sizes = 'auto, ' | append: image_sizes
+          if section.index == null or section.index < 5
+            assign featured_media_loading = 'eager'
+            assign featured_media_sizes = image_sizes
           endif
 
-          # Don't overfetch media if we don't need to
-          assign max_visible_slide_count = 1
-          if settings.product_card_carousel
-            assign max_visible_slide_count = 5
-          elsif settings.show_second_image_on_hover
-            assign max_visible_slide_count = 2
+          # The class differs per media only by media_type; the base template and the
+          # constrain-height suffix are the same for every slide, so build them once.
+          assign media_class = 'product-media-container media-fit product-media-container--[media_type]'
+          assign media_class_suffix = ''
+          if constrain_to_viewport
+            assign media_class_suffix = ' constrain-height'
           endif
 
-          capture slides
-            for media in media_list_to_show
-              assign hidden = false
-              assign attributes = ''
-              if variant_images contains media.src
-                assign attributes = 'variant-image'
+          assign featured_media_class = media_class | replace: '[media_type]', featured_media.media_type | append: media_class_suffix
+        %}
+        {%- if product.media.size == 1 -%}
+          <div
+            class="{{ featured_media_class }}"
+            style="--product-media-fit: {{ media_fit | default: 'cover' }};"
+          >
+            {% render 'product-media',
+              media: featured_media,
+              sizes: featured_media_sizes,
+              loading: featured_media_loading,
+              preview_image_only: true
+            %}
+          </div>
+        {%- else -%}
+          {% liquid
+            # Check if there are generic media that are not variant images
+            assign variant_images = product.images | where: 'attached_to_variant?', true | map: 'src'
+            assign generic_media_size = product.media.size | minus: variant_images.size
 
-                if forloop.first == false
-                  # hide all variant images that aren't the first one
-                  assign hidden = true
+            # Sort media so product.featured_media.preview_image comes first as that is the most relevant image to display
+            # product.featured_media updates based on search context and filters applied
+
+            assign other_media = product.media | reject: 'src', product.featured_media
+            assign media_list_to_show = product.featured_media | concat: other_media
+
+            if product.media.size > 2 and generic_media_size > 0
+              assign show_arrows = true
+            endif
+
+            # Don't overfetch media if we don't need to
+            assign max_visible_slide_count = 1
+            if settings.product_card_carousel
+              assign max_visible_slide_count = 5
+            elsif settings.show_second_image_on_hover
+              assign max_visible_slide_count = 2
+            endif
+
+            capture slides
+              for media in media_list_to_show
+                assign hidden = false
+                assign attributes = ''
+                if variant_images contains media.src
+                  assign attributes = 'variant-image'
+
+                  if forloop.first == false
+                    # hide all variant images that aren't the first one
+                    assign hidden = true
+                  endif
                 endif
-              endif
 
-              # Performance improvement: don't render more than 5 visible images into the slideshow
-              # We'll keep the images that we need for the variant images and hover next.
-              if forloop.first
-                assign visible_slide_count = 0
-              endif
-              unless hidden
-                assign visible_slide_count = visible_slide_count | plus: 1
-              endunless
-              if hidden == false and visible_slide_count > max_visible_slide_count
-                continue
-              endif
+                # Performance improvement: don't render more than 5 visible images into the slideshow
+                # We'll keep the images that we need for the variant images and hover next.
+                if forloop.first
+                  assign visible_slide_count = 0
+                endif
+                unless hidden
+                  assign visible_slide_count = visible_slide_count | plus: 1
+                endunless
+                if hidden == false and visible_slide_count > max_visible_slide_count
+                  continue
+                endif
 
-              if forloop.first
-                assign loading = featured_media_loading
-                assign sizes = featured_media_sizes
-              else
-                assign loading = 'lazy'
-                assign sizes = 'auto, ' | append: image_sizes
-              endif
+                if forloop.first
+                  assign loading = featured_media_loading
+                  assign sizes = featured_media_sizes
+                else
+                  assign loading = 'lazy'
+                  assign sizes = 'auto, ' | append: image_sizes
+                endif
 
-              assign class = media_class | replace: '[media_type]', media.media_type | append: media_class_suffix
+                assign class = media_class | replace: '[media_type]', media.media_type | append: media_class_suffix
 
-              capture slideshow_children
-                render 'product-media', media: media, sizes: sizes, loading: loading, preview_image_only: true
-              endcapture
+                capture slideshow_children
+                  render 'product-media', media: media, sizes: sizes, loading: loading, preview_image_only: true
+                endcapture
 
-              render 'slideshow-slide', slide_id: media.id, index: forloop.index0, hidden: hidden, class: class, attributes: attributes, children: slideshow_children, media_fit: media_fit
-            endfor
-          endcapture
+                render 'slideshow-slide', slide_id: media.id, index: forloop.index0, hidden: hidden, class: class, attributes: attributes, children: slideshow_children, media_fit: media_fit
+              endfor
+            endcapture
 
-          assign slideshow_attributes = 'data-generic-media-size="[generic_media_size]"' | replace: '[generic_media_size]', generic_media_size
-          if settings.product_card_carousel == false
-            assign slideshow_attributes = slideshow_attributes | append: ' disabled="true"'
-          endif
-        %}
-        {% render 'slideshow',
-          ref: 'slideshow',
-          initial_slide: 0,
-          slides: slides,
-          slide_count: media_list_to_show.size,
-          show_arrows: show_arrows,
-          attributes: slideshow_attributes
-        %}
+            assign slideshow_attributes = 'data-generic-media-size="[generic_media_size]"' | replace: '[generic_media_size]', generic_media_size
+            if settings.product_card_carousel == false
+              assign slideshow_attributes = slideshow_attributes | append: ' disabled="true"'
+            endif
+          %}
+          {% render 'slideshow',
+            ref: 'slideshow',
+            initial_slide: 0,
+            slides: slides,
+            slide_count: media_list_to_show.size,
+            show_arrows: show_arrows,
+            attributes: slideshow_attributes
+          %}
+        {%- endif -%}
       {%- endif -%}
     </a>
   {% elsif product != blank and product.media.size == 0 %}
@@ -256,6 +295,49 @@
 
   .card-gallery svg {
     aspect-ratio: var(--gallery-aspect-ratio, var(--ratio));
+  }
+
+  /*
+   * CABIN-09 scent fan. The fan replaces the slideshow, so this wrapper carries
+   * the block's aspect ratio and stretches the fan to fill it, keeping fan
+   * cards the same height as media cards in the grid. The gallery's own
+   * overflow clipping and corner radius apply to it like any other media.
+   */
+  .card-gallery__scent-fan {
+    display: grid;
+    width: 100%;
+    aspect-ratio: var(--gallery-aspect-ratio, 4 / 5);
+  }
+
+  .card-gallery .card-gallery__scent-fan > .scent-fan {
+    width: 100%;
+    height: 100%;
+    aspect-ratio: auto;
+  }
+
+  /*
+   * Editorial product grids force --gallery-aspect-ratio to 99 !important and
+   * stretch the media to the cell height instead (see editorial-product-grid).
+   * Give the fan the same stretch, and size its notes from the fan's shorter
+   * axis because the cell ratio is not known to CSS. On the 4:5 design stage
+   * 1cqw == 1cqmin, so the note geometry is unchanged elsewhere.
+   */
+  .editorial-product__grid .card-gallery__scent-fan {
+    height: 100%;
+    aspect-ratio: auto;
+  }
+
+  .editorial-product__grid .scent-fan--grid {
+    --fan-fit: 1;
+
+    /* The height is definite here (height: 100% chain), so a size container is valid */
+    container-type: size;
+  }
+
+  .editorial-product__grid .scent-fan--grid .scent-fan__note {
+    --fan-unit: calc(1cqmin * var(--fan-fit));
+
+    width: calc(42cqmin * var(--fan-fit));
   }
 
   .product-card-gallery__title-placeholder {
@@ -424,6 +506,11 @@
 
   ul[product-grid-view='zoom-out'] .card-gallery > img {
     display: block;
+  }
+
+  /* Zoomed-out thumbnails are too small to read a note, so only the vessel stays. */
+  [product-grid-view='zoom-out'] .card-gallery__scent-fan .scent-fan__note {
+    display: none;
   }
 
   .card-gallery slideshow-arrows .slideshow-control {

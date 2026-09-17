@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "harness-out",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["C:/Users/Ahmed/AppData/Local/Temp/claude/C--Users-Ahmed-Documents-0-Websites-CABIN-09/f9845f9c-ca8c-48c4-acd6-9f074f7102ee/scratchpad/harness/serve-out.js", "4180"],
+      "port": 4180
+    }
+  ]
+}

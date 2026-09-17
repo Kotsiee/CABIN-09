@@ -1,0 +1,221 @@
+{%- comment -%}
+  CABIN-09 · Customer waitlist section (product template only).
+
+  Wraps snippets/cabin-notify-form.liquid in Horizon's page-width section grid.
+  The customer tag key is the product handle, suffixed with the selected variant
+  id when the product has more than one variant, so each variant can have its
+  own Shopify Email segment. cabin-waitlist.js keeps the section in step with
+  the variant picker (see the note above the script tag).
+
+  Visibility:
+    always       — render on every product (default, lets the merchant preview)
+    unavailable  — render only when the product or the selected variant is
+                   sold out, or the product is tagged "unreleased"
+{%- endcomment -%}
+
+{%- liquid
+  assign variant = product.selected_or_first_available_variant
+  assign visibility = section.settings.visibility | default: 'always'
+
+  assign is_unavailable = false
+  if product.available == false
+    assign is_unavailable = true
+  elsif variant != blank and variant.available == false
+    assign is_unavailable = true
+  elsif product.tags contains 'unreleased'
+    assign is_unavailable = true
+  endif
+
+  assign show_form = false
+  if product != blank
+    if visibility == 'always' or is_unavailable
+      assign show_form = true
+    endif
+  endif
+
+  assign notify_key = product.handle
+  if product.variants.size > 1 and variant != blank
+    assign notify_key = product.handle | append: '-' | append: variant.id
+  endif
+-%}
+
+{%- comment -%}
+  The script loads whenever a product is present, even while the form is hidden:
+  Horizon's variant picker swaps variants client-side and only morphs itself, so
+  cabin-waitlist.js re-renders this section from the picker's fetched page on
+  shopify:product:select, letting the visibility rule and the notify key follow
+  the selected variant. The marker lets it find the section while it is empty.
+{%- endcomment -%}
+{%- if product != blank -%}
+  <script src="{{ 'cabin-waitlist.js' | asset_url }}" defer="defer"></script>
+  <span hidden data-notify-me-section="{{ section.id }}"></span>
+{%- endif -%}
+
+{%- if show_form -%}
+  <div class="section-background"></div>
+  <div
+    class="section section--page-width cabin-theme spacing-style notify-me"
+    style="
+      {% render 'spacing-padding', settings: section.settings %}
+      --notify-max-width: {{ section.settings.max_width }}px;
+    "
+  >
+    <div
+      class="notify-me__inner"
+      data-notify-me
+      data-product-handle="{{ product.handle }}"
+      data-variant-id="{{ variant.id }}"
+    >
+      {%- render 'cabin-notify-form',
+        key: notify_key,
+        title: product.title,
+        heading: section.settings.heading,
+        body: section.settings.body,
+        success: section.settings.success,
+        button_label: section.settings.button_label
+      -%}
+    </div>
+  </div>
+{%- elsif request.design_mode -%}
+  {%- comment -%}
+    Theme editor only: explain why nothing renders instead of leaving a blank
+    section the merchant cannot find on the canvas.
+  {%- endcomment -%}
+  <div class="section-background"></div>
+  <div
+    class="section section--page-width cabin-theme spacing-style notify-me"
+    style="{% render 'spacing-padding', settings: section.settings %}"
+  >
+    <p class="notify-me__placeholder cabin-label">
+      {%- if product == blank -%}
+        Customer waitlist: add this section to a product template.
+      {%- else -%}
+        Customer waitlist is hidden on the storefront because this product is available. Set Visibility to “Always” to preview it here.
+      {%- endif -%}
+    </p>
+  </div>
+{%- endif -%}
+
+{% stylesheet %}
+  .notify-me__inner {
+    width: 100%;
+    max-width: var(--notify-max-width, 40rem);
+    margin-inline: auto;
+  }
+
+  .notify-me .notify-me__placeholder {
+    margin: 0;
+    padding: var(--cabin-space-5);
+    border: 1px dashed var(--cabin-border-strong);
+    border-radius: var(--cabin-radius-md);
+    text-align: center;
+    text-transform: none;
+    letter-spacing: 0.02em;
+  }
+{% endstylesheet %}
+
+{% schema %}
+{
+  "name": "Customer waitlist",
+  "tag": "section",
+  "class": "section-wrapper cabin-section",
+  "enabled_on": {
+    "templates": ["product"]
+  },
+  "settings": [
+    {
+      "type": "paragraph",
+      "content": "Collects an email address through Shopify's customer form and tags the profile 'waitlist' and 'notify:product-handle' (plus the variant id when the product has several variants). Build a Shopify Email segment on those tags to send the release notice."
+    },
+    {
+      "type": "select",
+      "id": "visibility",
+      "label": "Visibility",
+      "options": [
+        {
+          "value": "always",
+          "label": "Always"
+        },
+        {
+          "value": "unavailable",
+          "label": "Only when unavailable"
+        }
+      ],
+      "default": "always",
+      "info": "'Only when unavailable' renders the form when the product or the selected variant is sold out, or the product is tagged 'unreleased'."
+    },
+    {
+      "type": "header",
+      "content": "Copy"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Join the waitlist"
+    },
+    {
+      "type": "text",
+      "id": "body",
+      "label": "Body",
+      "default": "One message when it ships. Nothing else."
+    },
+    {
+      "type": "text",
+      "id": "success",
+      "label": "Success message",
+      "default": "Noted. We will write once, when it is ready."
+    },
+    {
+      "type": "text",
+      "id": "button_label",
+      "label": "Button label",
+      "default": "Notify me"
+    },
+    {
+      "type": "header",
+      "content": "Layout"
+    },
+    {
+      "type": "range",
+      "id": "max_width",
+      "label": "Maximum width",
+      "min": 320,
+      "max": 900,
+      "step": 10,
+      "unit": "px",
+      "default": 640
+    },
+    {
+      "type": "header",
+      "content": "Padding"
+    },
+    {
+      "type": "range",
+      "id": "padding-block-start",
+      "label": "Top",
+      "min": 0,
+      "max": 100,
+      "step": 4,
+      "unit": "px",
+      "default": 48
+    },
+    {
+      "type": "range",
+      "id": "padding-block-end",
+      "label": "Bottom",
+      "min": 0,
+      "max": 100,
+      "step": 4,
+      "unit": "px",
+      "default": 48
+    }
+  ],
+  "presets": [
+    {
+      "name": "Customer waitlist",
+      "category": "Product"
+    }
+  ]
+}
+{% endschema %}

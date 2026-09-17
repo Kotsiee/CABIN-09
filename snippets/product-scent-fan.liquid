@@ -1,0 +1,720 @@
+{%- doc -%}
+  Renders the CABIN-09 scent fan: three radial note cards (Top / Heart / Base) sitting
+  behind a transparent vessel cut-out.
+
+  Grid mode is decorative. The notes sit collapsed behind the vessel and fan out to
+  -14deg / 0deg (raised) / +14deg when the surrounding product card is hovered or focused.
+  PDP mode is fully fanned, revealed from collapsed on first intersection by
+  assets/scent-modal.js, and each note is a button that opens the note detail modal.
+
+  Note data comes from the `cabin.top_note` / `cabin.heart_note` / `cabin.base_note`
+  product metafields (a `scent_note` metaobject reference, or a plain text name).
+  The fallback parameters are only used for a tier whose metafield is blank.
+
+  In grid mode, when no tier resolves to a name the snippet outputs nothing so the
+  caller can fall back to the regular card gallery. In pdp mode the vessel still
+  renders, with an `is-empty` class on the root.
+
+  The stylesheet tag below also holds the CSS for the note detail modal
+  (`.scent-modal`); the JS only builds DOM.
+
+  @param {object} product - The product object
+  @param {string} [mode] - 'grid' (default) or 'pdp'
+  @param {object} [image] - Image override; defaults to product.featured_image
+  @param {string} [sizes] - The img sizes attribute for the vessel image
+  @param {string} [top_name] - Fallback top note name
+  @param {string} [top_alias] - Fallback top note alias (e.g. the accord or material name)
+  @param {string} [top_profile] - Fallback top note profile: what it smells like
+  @param {string} [top_chemistry] - Fallback top note chemistry: why it works in a cabin
+  @param {string} [top_molecule] - Fallback top note molecular weight, e.g. '106 g/mol'
+  @param {string} [heart_name] - Fallback heart note name
+  @param {string} [heart_alias] - Fallback heart note alias
+  @param {string} [heart_profile] - Fallback heart note profile
+  @param {string} [heart_chemistry] - Fallback heart note chemistry
+  @param {string} [heart_molecule] - Fallback heart note molecular weight
+  @param {string} [base_name] - Fallback base note name
+  @param {string} [base_alias] - Fallback base note alias
+  @param {string} [base_profile] - Fallback base note profile
+  @param {string} [base_chemistry] - Fallback base note chemistry
+  @param {string} [base_molecule] - Fallback base note molecular weight
+
+  @example
+  {% render 'product-scent-fan', product: product, mode: 'grid', sizes: image_sizes %}
+
+  @example
+  {% render 'product-scent-fan',
+    product: product,
+    mode: 'pdp',
+    image: section.settings.image,
+    top_name: section.settings.top_name,
+    top_alias: section.settings.top_alias
+  %}
+{%- enddoc -%}
+
+{%- liquid
+  assign fan_mode = mode | default: 'grid'
+  if fan_mode != 'pdp'
+    assign fan_mode = 'grid'
+  endif
+
+  assign fan_image = image | default: product.featured_image
+  assign fan_sizes = sizes | default: '(min-width: 750px) 40vw, 100vw'
+  assign fan_alt = fan_image.alt | default: product.title
+
+  assign tiers = 'top,heart,base' | split: ','
+  assign note_count = 0
+-%}
+
+{%- capture fan_notes -%}
+  {%- for tier in tiers -%}
+    {%- liquid
+      case tier
+        when 'top'
+          assign note_ref = product.metafields.cabin.top_note.value
+          assign tier_label = 'Top'
+          assign tier_window = 'First 10 to 20 minutes'
+          assign fallback_name = top_name
+          assign fallback_alias = top_alias
+          assign fallback_profile = top_profile
+          assign fallback_chemistry = top_chemistry
+          assign fallback_molecule = top_molecule
+        when 'heart'
+          assign note_ref = product.metafields.cabin.heart_note.value
+          assign tier_label = 'Heart'
+          assign tier_window = 'Hours 1 to 6'
+          assign fallback_name = heart_name
+          assign fallback_alias = heart_alias
+          assign fallback_profile = heart_profile
+          assign fallback_chemistry = heart_chemistry
+          assign fallback_molecule = heart_molecule
+        else
+          assign note_ref = product.metafields.cabin.base_note.value
+          assign tier_label = 'Base'
+          assign tier_window = 'The lingering signature'
+          assign fallback_name = base_name
+          assign fallback_alias = base_alias
+          assign fallback_profile = base_profile
+          assign fallback_chemistry = base_chemistry
+          assign fallback_molecule = base_molecule
+      endcase
+
+      # A scent_note metaobject exposes its fields; a plain text metafield is the name itself.
+      assign note_name = ''
+      assign note_alias = ''
+      assign note_profile = ''
+      assign note_chemistry = ''
+      assign note_molecule = ''
+
+      if note_ref.name.value != blank
+        assign note_name = note_ref.name.value
+        assign note_alias = note_ref.alias.value
+        assign note_profile = note_ref.profile.value
+        assign note_chemistry = note_ref.chemistry.value
+        assign note_molecule = note_ref.molecular_weight.value
+      elsif note_ref != blank and note_ref.system == blank
+        assign note_name = note_ref
+      endif
+
+      # Editor fallbacks apply only when the metafield resolved to nothing.
+      if note_name == blank
+        assign note_name = fallback_name
+        assign note_alias = fallback_alias
+        assign note_profile = fallback_profile
+        assign note_chemistry = fallback_chemistry
+        assign note_molecule = fallback_molecule
+      endif
+
+      if note_name != blank
+        assign note_count = note_count | plus: 1
+      endif
+    -%}
+
+    {%- if note_name != blank -%}
+      {%- if fan_mode == 'pdp' -%}
+        <button
+          type="button"
+          class="scent-fan__note scent-fan__note--{{ tier }}"
+          data-scent-note
+          data-note-tier="{{ tier_label }}"
+          data-note-window="{{ tier_window }}"
+          data-note-name="{{ note_name | escape }}"
+          data-note-alias="{{ note_alias | escape }}"
+          data-note-profile="{{ note_profile | escape }}"
+          data-note-chemistry="{{ note_chemistry | escape }}"
+          data-note-molecule="{{ note_molecule | escape }}"
+          aria-haspopup="dialog"
+          aria-label="{{ tier_label }} note, {{ note_name | escape }}. Open detail."
+        >
+      {%- else -%}
+        <span
+          class="scent-fan__note scent-fan__note--{{ tier }}"
+          data-scent-note
+          data-note-tier="{{ tier_label }}"
+          data-note-window="{{ tier_window }}"
+          data-note-name="{{ note_name | escape }}"
+          data-note-alias="{{ note_alias | escape }}"
+          data-note-profile="{{ note_profile | escape }}"
+          data-note-chemistry="{{ note_chemistry | escape }}"
+          data-note-molecule="{{ note_molecule | escape }}"
+          aria-hidden="true"
+        >
+      {%- endif -%}
+      <span class="scent-fan__tier">{{ tier_label }}</span>
+      <span class="scent-fan__name">{{ note_name | escape }}</span>
+      {%- if note_alias != blank -%}
+        <span class="scent-fan__alias">{{ note_alias | escape }}</span>
+      {%- endif -%}
+      {%- if fan_mode == 'pdp' -%}
+        </button>
+      {%- else -%}
+        </span>
+      {%- endif -%}
+    {%- endif -%}
+  {%- endfor -%}
+{%- endcapture -%}
+
+{%- if note_count > 0 or fan_mode == 'pdp' -%}
+  <div
+    class="scent-fan scent-fan--{{ fan_mode }}{% if note_count == 0 %} is-empty{% endif %}"
+    data-scent-fan
+    data-product-handle="{{ product.handle }}"
+    {% if fan_mode == 'pdp' and note_count > 0 %}
+      role="group"
+      aria-label="Scent pyramid, {{ product.title | escape }}"
+    {% endif %}
+  >
+    {{ fan_notes }}
+    <div class="scent-fan__vessel">
+      {%- if fan_image != blank -%}
+        {{
+          fan_image
+          | image_url: width: 1200
+          | image_tag:
+            widths: '360, 540, 720, 900, 1200',
+            sizes: fan_sizes,
+            loading: 'lazy',
+            class: 'scent-fan__img',
+            alt: fan_alt
+        }}
+      {%- else -%}
+        {{ 'product-apparel-1' | placeholder_svg_tag: 'scent-fan__img scent-fan__img--placeholder' }}
+      {%- endif -%}
+    </div>
+  </div>
+{%- endif -%}
+
+{% stylesheet %}
+  /* --------------------------------------------------------------------------
+     Scent fan
+     Three note cards positioned at the centre of a 4:5 stage, transformed from a
+     low pivot (transform-origin 50% 120%) so they swing out radially. Geometry is
+     driven entirely by custom properties:
+       --note-x / --note-y  translate, as a percentage of the note's own box
+       --note-r             rotation
+       --note-s             scale
+       --note-o             opacity
+     The fanned values come from the global tokens --cabin-fan-angle,
+     --cabin-fan-lift and --cabin-fan-spread so the shape can be tuned in one place.
+     -------------------------------------------------------------------------- */
+  .scent-fan {
+    --fan-fit: 1;
+
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 5;
+    container-type: inline-size;
+    isolation: isolate;
+  }
+
+  /* Inside a product card the fan adopts the card's image ratio. When the card is
+     squarer than the 4:5 design the notes shrink by the same proportion so the
+     lifted heart card still clears the top edge. */
+  .scent-fan--grid {
+    --fan-fit: min(1, 0.8 / (var(--gallery-aspect-ratio, 0.8)));
+
+    aspect-ratio: var(--gallery-aspect-ratio, 4 / 5);
+  }
+
+  .scent-fan__vessel {
+    position: absolute;
+    inset: 0;
+    z-index: var(--cabin-z-vessel);
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+  }
+
+  .scent-fan__img {
+    display: block;
+    width: 68%;
+    height: auto;
+    max-height: 92%;
+    object-fit: contain;
+    filter: drop-shadow(0 24px 32px rgba(0, 0, 0, 0.55));
+  }
+
+  .scent-fan__img--placeholder {
+    opacity: 0.4;
+  }
+
+  .scent-fan__note {
+    /* 1cqw of the fan stage, scaled by --fan-fit; every note dimension is a multiple of it */
+    --fan-unit: calc(1cqw * var(--fan-fit));
+    --note-x: 0%;
+    --note-y: 0%;
+    --note-r: 0deg;
+    --note-s: 0.88;
+    --note-o: 0;
+
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: var(--cabin-z-note);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: calc(1.5 * var(--fan-unit));
+    box-sizing: border-box;
+    width: calc(42% * var(--fan-fit));
+    aspect-ratio: 3 / 4;
+    margin: 0;
+    padding: calc(6 * var(--fan-unit)) calc(4 * var(--fan-unit));
+    border: 1px solid var(--cabin-border);
+    border-radius: var(--cabin-radius-md);
+    background: linear-gradient(180deg, var(--cabin-elevation-2) 0%, var(--cabin-elevation) 100%);
+    box-shadow: var(--cabin-shadow-note);
+    color: var(--cabin-text);
+    font: inherit;
+    text-align: left;
+    appearance: none;
+    cursor: default;
+    opacity: var(--note-o);
+    transform-origin: 50% 120%;
+    transform: translate(calc(-50% + var(--note-x)), calc(-50% + var(--note-y))) rotate(var(--note-r))
+      scale(var(--note-s));
+    transition:
+      transform var(--cabin-dur-base) var(--cabin-ease-out),
+      opacity var(--cabin-dur-base) var(--cabin-ease-out),
+      box-shadow var(--cabin-dur-base) var(--cabin-ease-out),
+      border-color var(--cabin-dur-fast) var(--cabin-ease-out);
+  }
+
+  /* Brass hairline along the top edge of each card */
+  .scent-fan__note::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 12%;
+    left: 12%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--cabin-brass), transparent);
+    opacity: 0.7;
+  }
+
+  .scent-fan__tier {
+    font-family: var(--cabin-font-ui);
+    font-size: clamp(0.5rem, calc(2.8 * var(--fan-unit)), 0.75rem);
+    font-weight: 500;
+    letter-spacing: var(--cabin-track-label);
+    line-height: 1.2;
+    text-transform: uppercase;
+    color: var(--cabin-brass);
+  }
+
+  .scent-fan__name {
+    font-family: var(--cabin-font-serif);
+    /* Sized against the note's content width (about 30 fan units) so a twelve-letter
+       name such as "Frankincense" stays on one line; anything longer hyphenates. */
+    font-size: clamp(0.6875rem, calc(4.8 * var(--fan-unit)), 1.75rem);
+    font-weight: 400;
+    letter-spacing: var(--cabin-track-serif);
+    line-height: 1.15;
+    color: var(--cabin-display);
+    overflow-wrap: normal;
+    hyphens: auto;
+  }
+
+  .scent-fan__alias {
+    font-family: var(--cabin-font-ui);
+    font-size: clamp(0.5rem, calc(2.8 * var(--fan-unit)), 0.8125rem);
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    line-height: 1.3;
+    color: var(--cabin-text-muted);
+  }
+
+  /* Fanned geometry. Applies permanently on the PDP and, in the grid, while the
+     card (Horizon's <product-card> / .card-gallery) or the fan itself is hovered
+     or holds focus. */
+  .scent-fan--pdp .scent-fan__note,
+  :is(product-card, .product-card, .card-gallery, .scent-fan):is(:hover, :focus-within) .scent-fan--grid .scent-fan__note {
+    --note-s: 1;
+    --note-o: 1;
+  }
+
+  .scent-fan--pdp .scent-fan__note--top,
+  :is(product-card, .product-card, .card-gallery, .scent-fan):is(:hover, :focus-within)
+    .scent-fan--grid
+    .scent-fan__note--top {
+    --note-x: calc(-1 * var(--cabin-fan-spread));
+    --note-y: var(--cabin-fan-lift);
+    --note-r: calc(-1 * var(--cabin-fan-angle));
+  }
+
+  .scent-fan--pdp .scent-fan__note--heart,
+  :is(product-card, .product-card, .card-gallery, .scent-fan):is(:hover, :focus-within)
+    .scent-fan--grid
+    .scent-fan__note--heart {
+    --note-y: calc(var(--cabin-fan-lift) * 1.8);
+    --note-r: 0deg;
+  }
+
+  .scent-fan--pdp .scent-fan__note--base,
+  :is(product-card, .product-card, .card-gallery, .scent-fan):is(:hover, :focus-within)
+    .scent-fan--grid
+    .scent-fan__note--base {
+    --note-x: var(--cabin-fan-spread);
+    --note-y: var(--cabin-fan-lift);
+    --note-r: var(--cabin-fan-angle);
+  }
+
+  /* Grid notes are decorative: the whole card is the link */
+  .scent-fan--grid .scent-fan__note {
+    pointer-events: none;
+  }
+
+  /* Touch devices have no hover, so show a permanent slight fan */
+  @media (hover: none) {
+    .scent-fan--grid .scent-fan__note {
+      --note-s: 0.96;
+      --note-o: 1;
+    }
+
+    .scent-fan--grid .scent-fan__note--top {
+      --note-x: -10%;
+      --note-y: -4%;
+      --note-r: -6deg;
+    }
+
+    .scent-fan--grid .scent-fan__note--heart {
+      --note-y: -7%;
+    }
+
+    .scent-fan--grid .scent-fan__note--base {
+      --note-x: 10%;
+      --note-y: -4%;
+      --note-r: 6deg;
+    }
+  }
+
+  /* PDP: wider fan, vessel sits on the floor of the stage, notes are buttons */
+  .scent-fan--pdp {
+    --cabin-fan-angle: 16deg;
+    --cabin-fan-lift: -16%;
+    --cabin-fan-spread: 34%;
+  }
+
+  .scent-fan--pdp .scent-fan__note {
+    width: 40%;
+    cursor: pointer;
+  }
+
+  .scent-fan--pdp .scent-fan__vessel {
+    align-items: end;
+    padding-bottom: 3%;
+  }
+
+  .scent-fan--pdp .scent-fan__img {
+    width: 56%;
+    max-height: 78%;
+  }
+
+  /* Before the JS reveal the PDP notes sit collapsed behind the vessel (snapped, no
+     transition, so arming never plays backwards). Without JS the fan is simply fanned. */
+  .scent-fan--pdp.is-armed:not(.is-revealed) .scent-fan__note {
+    --note-x: 0%;
+    --note-y: 0%;
+    --note-r: 0deg;
+    --note-s: 0.88;
+    --note-o: 0;
+
+    pointer-events: none;
+    transition: none;
+  }
+
+  /* Hovered / focused / open note: a touch larger, lifted a further 4%, brass ring, above the vessel */
+  .scent-fan--pdp .scent-fan__note:is(:hover, :focus-visible, .is-active) {
+    --note-s: 1.06;
+
+    z-index: var(--cabin-z-note-raised);
+    border-color: rgba(var(--cabin-brass-rgb), 0.6);
+    box-shadow: var(--cabin-shadow-note-raised);
+  }
+
+  .scent-fan--pdp .scent-fan__note--top:is(:hover, :focus-visible, .is-active),
+  .scent-fan--pdp .scent-fan__note--base:is(:hover, :focus-visible, .is-active) {
+    --note-y: calc(var(--cabin-fan-lift) - 4%);
+  }
+
+  .scent-fan--pdp .scent-fan__note--heart:is(:hover, :focus-visible, .is-active) {
+    --note-y: calc(var(--cabin-fan-lift) * 1.8 - 4%);
+  }
+
+  .scent-fan--pdp .scent-fan__note:focus-visible {
+    outline: 2px solid var(--cabin-brass);
+    outline-offset: 4px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scent-fan__note {
+      transition: none;
+    }
+  }
+
+  /* --------------------------------------------------------------------------
+     Note detail modal
+     DOM is built by assets/scent-modal.js and appended to <body>; every style
+     lives here. Structure:
+       .scent-modal[hidden]
+         .scent-modal__backdrop
+         .scent-modal__panel[role="dialog"]
+           .scent-modal__close
+           .scent-modal__eyebrow  (tier + evaporation window)
+           .scent-modal__title    (note name, Cormorant)
+           .scent-modal__alias
+           .scent-modal__rule
+           .scent-modal__section  (What it smells like)
+           .scent-modal__section  (Why it works in a cabin)
+           .scent-modal__spec     (Molecular weight)
+     -------------------------------------------------------------------------- */
+  .scent-modal {
+    position: fixed;
+    inset: 0;
+    z-index: var(--cabin-z-modal);
+    display: grid;
+    place-items: center;
+    padding: var(--cabin-space-4);
+  }
+
+  .scent-modal[hidden] {
+    display: none;
+  }
+
+  .scent-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(11, 11, 12, 0.78);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    opacity: 0;
+    transition: opacity var(--cabin-dur-base) var(--cabin-ease-out);
+  }
+
+  .scent-modal__panel {
+    position: relative;
+    box-sizing: border-box;
+    width: min(100%, 32rem);
+    max-height: calc(100vh - 2 * var(--cabin-space-4));
+    max-height: calc(100dvh - 2 * var(--cabin-space-4));
+    overflow: auto;
+    padding: clamp(var(--cabin-space-5), 5vw, var(--cabin-space-7));
+    border: 1px solid var(--cabin-border);
+    border-radius: var(--cabin-radius-md);
+    background: var(--cabin-elevation);
+    box-shadow: var(--cabin-shadow-float);
+    color: var(--cabin-text);
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+    transition:
+      opacity var(--cabin-dur-base) var(--cabin-ease-out),
+      transform var(--cabin-dur-base) var(--cabin-ease-out);
+  }
+
+  .scent-modal__panel:focus {
+    outline: none;
+  }
+
+  .scent-modal__panel:focus-visible {
+    outline: 2px solid var(--cabin-brass);
+    outline-offset: 2px;
+  }
+
+  /* Brass hairline along the top of the panel, echoing the note cards */
+  .scent-modal__panel::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 15%;
+    left: 15%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--cabin-brass), transparent);
+  }
+
+  .scent-modal.is-open .scent-modal__backdrop {
+    opacity: 1;
+  }
+
+  .scent-modal.is-open .scent-modal__panel {
+    opacity: 1;
+    transform: none;
+  }
+
+  .scent-modal__close {
+    position: absolute;
+    top: var(--cabin-space-3);
+    right: var(--cabin-space-3);
+    display: grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--cabin-border);
+    border-radius: var(--cabin-radius-pill);
+    background: transparent;
+    color: var(--cabin-display);
+    font: inherit;
+    appearance: none;
+    cursor: pointer;
+    transition:
+      border-color var(--cabin-dur-fast) var(--cabin-ease-out),
+      color var(--cabin-dur-fast) var(--cabin-ease-out),
+      transform var(--cabin-dur-fast) var(--cabin-ease-out);
+  }
+
+  .scent-modal__close:hover {
+    border-color: var(--cabin-brass);
+    color: var(--cabin-brass);
+    transform: rotate(90deg);
+  }
+
+  .scent-modal__close:focus-visible {
+    outline: 2px solid var(--cabin-brass);
+    outline-offset: 3px;
+  }
+
+  .scent-modal__close svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .scent-modal__eyebrow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--cabin-space-2) var(--cabin-space-3);
+    margin: 0 var(--cabin-space-7) var(--cabin-space-3) 0;
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-xs);
+    font-weight: 500;
+    letter-spacing: var(--cabin-track-label);
+    text-transform: uppercase;
+    color: var(--cabin-brass);
+  }
+
+  .scent-modal__eyebrow span + span {
+    font-family: var(--cabin-font-serif);
+    font-size: var(--cabin-fs-sm);
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    text-transform: none;
+    color: var(--cabin-text-muted);
+  }
+
+  .scent-modal__title {
+    margin: 0;
+    font-family: var(--cabin-font-serif);
+    font-size: clamp(1.75rem, 4vw, 2.5rem);
+    font-weight: 400;
+    letter-spacing: var(--cabin-track-serif);
+    line-height: 1.1;
+    text-transform: none;
+    color: var(--cabin-display);
+  }
+
+  .scent-modal__alias {
+    margin: var(--cabin-space-2) 0 0;
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-sm);
+    line-height: 1.4;
+    color: var(--cabin-text-muted);
+  }
+
+  .scent-modal__rule {
+    width: 2.5rem;
+    height: 1px;
+    margin: var(--cabin-space-5) 0;
+    border: 0;
+    background: var(--cabin-brass);
+  }
+
+  .scent-modal__section {
+    margin: 0 0 var(--cabin-space-5);
+    opacity: 0;
+    transform: translateY(8px);
+    transition:
+      opacity var(--cabin-dur-slow) var(--cabin-ease-out),
+      transform var(--cabin-dur-slow) var(--cabin-ease-out);
+  }
+
+  .scent-modal__section:last-child {
+    margin-bottom: 0;
+  }
+
+  .scent-modal.is-open .scent-modal__section {
+    opacity: 1;
+    transform: none;
+  }
+
+  .scent-modal.is-open .scent-modal__section + .scent-modal__section {
+    transition-delay: 80ms;
+  }
+
+  .scent-modal__section h3 {
+    margin: 0 0 var(--cabin-space-2);
+    font-family: var(--cabin-font-display);
+    font-size: var(--cabin-fs-xs);
+    font-weight: 600;
+    letter-spacing: var(--cabin-track-display);
+    line-height: 1.3;
+    text-transform: uppercase;
+    color: var(--cabin-display);
+  }
+
+  .scent-modal__section p {
+    margin: 0;
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-md);
+    line-height: 1.65;
+    white-space: pre-line;
+  }
+
+  .scent-modal__spec {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--cabin-space-4);
+    margin-top: var(--cabin-space-5);
+    padding-top: var(--cabin-space-4);
+    border-top: 1px solid var(--cabin-border);
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-xs);
+    letter-spacing: var(--cabin-track-label);
+    text-transform: uppercase;
+    color: var(--cabin-text-muted);
+  }
+
+  .scent-modal__spec b {
+    font-weight: 500;
+    color: var(--cabin-display);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scent-modal__backdrop,
+    .scent-modal__panel,
+    .scent-modal__section,
+    .scent-modal__close {
+      transition: none;
+    }
+  }
+{% endstylesheet %}

@@ -1,0 +1,325 @@
+{%- doc -%}
+  Renders the CABIN-09 waitlist form.
+
+  It is a native Shopify customer form: on submit the address is stored as a
+  customer profile tagged `waitlist, notify:<key>`, so a Shopify Email segment
+  can be built on `customer_tags CONTAINS 'notify:<key>'`. Email only.
+
+  Works with JavaScript disabled — Shopify redirects back with
+  `?customer_posted=true#notify-<key>` and the section re-renders with
+  `form.posted_successfully?`. When `cabin-waitlist.js` is loaded the form posts
+  asynchronously and swaps in the success state in place.
+
+  Markup hooks consumed by `assets/cabin-waitlist.js`:
+  `[data-notify]` (root, with `data-notify-key` and `data-notify-success`),
+  `[data-notify-submit]`, `[data-notify-submit-label]`,
+  `[data-notify-state="error"]` (always present, hidden when empty).
+
+  @param {string} key - Slug used for the customer tag `notify:<key>` (handleized)
+  @param {string} [title] - Name of the thing being waited on, e.g. the product title
+  @param {string} [heading] - Module heading, defaults to "Join the waitlist"
+  @param {string} [body] - One-line supporting copy
+  @param {string} [success] - Message shown once the address has been recorded
+  @param {string} [button_label] - Submit button label, defaults to "Notify me"
+
+  @example
+  {% render 'cabin-notify-form', key: product.handle, title: product.title %}
+{%- enddoc -%}
+
+{%- liquid
+  assign notify_key = key | handleize
+  assign notify_id = 'notify-' | append: notify_key
+  assign notify_heading = heading | default: 'Join the waitlist'
+  assign notify_body = body | default: 'One message when it ships. Nothing else.'
+  assign notify_success = success | default: 'Noted. We will write once, when it is ready.'
+  assign notify_button_label = button_label | default: 'Notify me'
+  assign notify_tags = 'waitlist, notify:' | append: notify_key
+-%}
+
+<div
+  class="notify"
+  data-notify
+  data-notify-key="{{ notify_key }}"
+  data-notify-title="{{ title | escape }}"
+  data-notify-success="{{ notify_success | escape }}"
+>
+  {%- form 'customer', id: notify_id, class: 'notify__form' -%}
+    {%- comment -%}
+      `form.posted_successfully?` and `form.errors` are shared by every
+      `form 'customer'` on the page (Horizon's footer newsletter is one), so
+      each state is scoped to this form:
+
+      Errors: Shopify re-renders the page with the posted fields, and echoes
+      `contact[id]` back as `form.id` — only a match counts. No blank fallback:
+      the footer newsletter posts no id, and it must not light this module up.
+
+      Success: Shopify redirects to `?customer_posted=true#<form id>`, and the
+      GET carries no `form.id`. The success state is therefore rendered whenever
+      the page-global flag is set, and the stylesheet shows it only on the form
+      that is the URL target (or that cabin-waitlist.js marked `is-success`).
+    {%- endcomment -%}
+    {%- liquid
+      assign has_error = false
+      if form.errors and form.id == notify_id
+        assign has_error = true
+      endif
+
+      assign posted = false
+      if form.posted_successfully?
+        assign posted = true
+      endif
+    -%}
+
+    <input type="hidden" name="contact[id]" value="{{ notify_id }}">
+    <input type="hidden" name="contact[tags]" value="{{ notify_tags }}" data-notify-tags>
+
+    {%- if posted -%}
+      <div
+        class="notify__state notify__state--success"
+        role="status"
+        tabindex="-1"
+        data-notify-state="success"
+      >
+        <span class="notify__tick" aria-hidden="true"></span>
+        <p class="notify__success cabin-serif cabin-serif--md">{{ notify_success | escape }}</p>
+      </div>
+    {%- endif -%}
+
+    <div class="notify__fields-wrap" data-notify-fields>
+      <div class="notify__head">
+        <h2 class="notify__heading cabin-label cabin-label--brass">{{ notify_heading | escape }}</h2>
+        {%- if title != blank -%}
+          <p class="notify__title cabin-serif cabin-serif--md">{{ title | escape }}</p>
+        {%- endif -%}
+        <p class="notify__body">{{ notify_body | escape }}</p>
+      </div>
+
+      <label class="notify__label cabin-label" for="{{ notify_id }}-email">Email address</label>
+      <div class="notify__fields">
+        <div class="notify__field">
+          <input
+            id="{{ notify_id }}-email"
+            class="notify__input cabin-input"
+            type="email"
+            name="contact[email]"
+            value="{% if has_error %}{{ form.email | escape }}{% endif %}"
+            autocomplete="email"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+            inputmode="email"
+            placeholder="Email address"
+            required
+            data-notify-email
+            {% if has_error %}
+              autofocus
+              aria-invalid="true"
+              aria-describedby="{{ notify_id }}-error"
+            {% endif %}
+          >
+        </div>
+
+        <button type="submit" class="notify__submit cabin-btn" data-notify-submit>
+          <span data-notify-submit-label>{{ notify_button_label | escape }}</span>
+        </button>
+      </div>
+
+      <p
+        id="{{ notify_id }}-error"
+        class="notify__state notify__state--error"
+        role="alert"
+        data-notify-state="error"
+        {% unless has_error %}
+          hidden
+        {% endunless %}
+      >
+        {%- if has_error -%}
+          {%- for field in form.errors -%}
+            {{ form.errors.translated_fields[field] | capitalize }} {{ form.errors.messages[field] }}
+            {%- unless forloop.last %}. {% endunless -%}
+          {%- endfor -%}
+        {%- endif -%}
+      </p>
+
+      <p class="notify__fine">A single release notice. Unsubscribe in one tap.</p>
+    </div>
+  {%- endform -%}
+</div>
+
+{% stylesheet %}
+  .notify {
+    padding: clamp(1.25rem, 3vw, 2rem);
+    border: 1px solid var(--cabin-border);
+    border-radius: var(--cabin-radius-md);
+    background: var(--cabin-elevation);
+    box-shadow: var(--cabin-shadow-card);
+    color: var(--cabin-text);
+    font-family: var(--cabin-font-ui);
+  }
+
+  .notify__form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cabin-space-4);
+    margin: 0;
+  }
+
+  /* Head */
+  .notify__head > * {
+    margin: 0;
+  }
+
+  .notify__heading {
+    /* Reset Horizon's h2 type so the eyebrow reads at label size */
+    font-size: var(--cabin-fs-xs);
+    line-height: 1.4;
+    margin-block-end: var(--cabin-space-2);
+  }
+
+  .notify__title {
+    margin-block-end: var(--cabin-space-1);
+  }
+
+  .notify__body {
+    font-size: var(--cabin-fs-sm);
+    line-height: 1.6;
+    color: var(--cabin-text-muted);
+  }
+
+  /* Fields */
+  .notify__label {
+    display: block;
+    margin-block-end: var(--cabin-space-2);
+  }
+
+  .notify__fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--cabin-space-2);
+    align-items: stretch;
+  }
+
+  @media screen and (min-width: 750px) {
+    .notify__fields {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+  }
+
+  .notify__field {
+    min-width: 0;
+  }
+
+  .notify__input {
+    box-sizing: border-box;
+    height: 100%;
+  }
+
+  .notify__submit {
+    box-sizing: border-box;
+    width: 100%;
+  }
+
+  @media screen and (min-width: 750px) {
+    .notify__submit {
+      width: auto;
+    }
+  }
+
+  /* States */
+  .notify__state {
+    margin: 0;
+    font-size: var(--cabin-fs-sm);
+    line-height: 1.5;
+  }
+
+  .notify__state--error {
+    color: var(--cabin-state-error);
+  }
+
+  .notify__state--success {
+    display: flex;
+    align-items: center;
+    gap: var(--cabin-space-3);
+    outline: none;
+    animation: notify-settle var(--cabin-dur-base) var(--cabin-ease-out) both;
+  }
+
+  .notify__state--success:focus-visible {
+    outline: 2px solid var(--cabin-brass);
+    outline-offset: 6px;
+    border-radius: var(--cabin-radius-sm);
+  }
+
+  .notify__success {
+    margin: 0;
+  }
+
+  .notify__tick {
+    position: relative;
+    flex: none;
+    width: 1.75rem;
+    height: 1.75rem;
+    border: 1px solid var(--cabin-brass);
+    border-radius: 50%;
+  }
+
+  .notify__tick::after {
+    content: '';
+    position: absolute;
+    top: 46%;
+    left: 50%;
+    width: 0.55rem;
+    height: 0.3rem;
+    border-left: 1px solid var(--cabin-brass);
+    border-bottom: 1px solid var(--cabin-brass);
+    transform: translate(-50%, -50%) rotate(-45deg);
+  }
+
+  .notify__fine {
+    margin: 0;
+    font-size: var(--cabin-fs-2xs);
+    letter-spacing: 0.02em;
+    color: var(--cabin-text-muted);
+  }
+
+  /* Busy state applied by cabin-waitlist.js while the request is in flight */
+  /* Success only counts for the form that was posted: Shopify redirects to
+     #<form id>, so :target is the per-form signal without JavaScript, and
+     cabin-waitlist.js adds is-success after a fetch. */
+  .notify__form:not(:target):not(.is-success) .notify__state--success {
+    display: none;
+  }
+
+  .notify__form:is(:target, .is-success) .notify__fields-wrap {
+    display: none;
+  }
+
+  .notify__fields-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cabin-space-4);
+  }
+
+  .notify.is-submitting .notify__submit {
+    opacity: 0.6;
+    pointer-events: none;
+  }
+
+  @keyframes notify-settle {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .notify__state--success {
+      animation: none;
+    }
+  }
+{% endstylesheet %}

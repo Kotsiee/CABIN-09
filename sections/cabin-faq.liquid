@@ -1,0 +1,473 @@
+{%- comment -%}
+  CABIN-09 · FAQ accordion.
+
+  Renders a list of `question` blocks as native `<details>` / `<summary>`
+  disclosures. The summary is the only interactive element and is natively
+  focusable, so no additional ARIA is added. A brass plus icon rotates 45deg
+  when a row is open. Every duration comes from the cabin motion tokens, so
+  the icon and the answer reveal collapse to 0ms under
+  `prefers-reduced-motion`.
+
+  Section settings
+    eyebrow             text      brass label above the heading
+    heading             text      Syne display heading
+    padding-block-*     range     consumed by the `spacing-style` class
+
+  Block `question`
+    heading             text      the question, rendered in the summary
+    answer              richtext  the answer, rendered as Inter body copy
+    open                checkbox  row is open on first paint
+
+  Markup contract
+    .faq[data-faq]                two-column grid on desktop, stacked on mobile
+    details.faq__item             one row per question block
+    summary.faq__summary          index · question · plus icon
+    .faq__answer                  richtext body, hidden until the row is open
+{%- endcomment -%}
+
+{%- liquid
+  assign faq_eyebrow = section.settings.eyebrow
+  assign faq_heading = section.settings.heading
+
+  assign question_count = 0
+  for block in section.blocks
+    if block.type == 'question' and block.settings.heading != blank
+      assign question_count = question_count | plus: 1
+    endif
+  endfor
+
+  # Running index of rendered questions (blocks with a blank heading are skipped).
+  assign question_index = 0
+-%}
+
+<div class="section-background"></div>
+<div
+  class="section section--page-width spacing-style cabin-theme"
+  style="{% render 'spacing-padding', settings: section.settings %}"
+>
+  <div class="faq" data-faq>
+    {%- if faq_eyebrow != blank or faq_heading != blank -%}
+      <header class="faq__header">
+        {%- if faq_eyebrow != blank -%}
+          <p class="faq__eyebrow">{{ faq_eyebrow }}</p>
+        {%- endif -%}
+        {%- if faq_heading != blank -%}
+          <h2 class="faq__heading">{{ faq_heading }}</h2>
+        {%- endif -%}
+        {%- if question_count > 0 -%}
+          <p class="faq__count">
+            {{ question_count }}
+            {%- if question_count == 1 %} question{% else %} questions{% endif -%}
+          </p>
+        {%- endif -%}
+      </header>
+    {%- endif -%}
+
+    <div class="faq__list">
+      {%- for block in section.blocks -%}
+        {%- case block.type -%}
+          {%- when 'question' -%}
+            {%- liquid
+              assign question = block.settings.heading
+              assign answer = block.settings.answer
+            -%}
+            {%- if question != blank -%}
+              {%- assign question_index = question_index | plus: 1 -%}
+              <details
+                class="faq__item"
+                {% if block.settings.open %}
+                  open
+                {% endif %}
+                {{ block.shopify_attributes }}
+              >
+                <summary class="faq__summary">
+                  <span class="faq__index" aria-hidden="true">
+                    {%- if question_index < 10 -%}0{%- endif -%}{{ question_index }}
+                  </span>
+                  <span class="faq__question">{{ question }}</span>
+                  <span class="faq__icon" aria-hidden="true">
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 14 14"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                      focusable="false"
+                    >
+                      <path d="M1.5 7H12.5" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"></path>
+                      <path d="M7 1.5V12.5" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"></path>
+                    </svg>
+                  </span>
+                </summary>
+                {%- if answer != blank -%}
+                  <div class="faq__answer">
+                    {{ answer }}
+                  </div>
+                {%- endif -%}
+              </details>
+            {%- endif -%}
+        {%- endcase -%}
+      {%- endfor -%}
+    </div>
+  </div>
+</div>
+
+{% stylesheet %}
+  /* ------------------------------------------------------------------
+     CABIN-09 FAQ accordion
+     Tokens come from assets/cabin-design-tokens.css (loaded globally).
+     ------------------------------------------------------------------ */
+
+  .faq {
+    display: grid;
+    gap: var(--cabin-space-6);
+    width: 100%;
+    min-width: 0;
+  }
+
+  @media screen and (min-width: 750px) {
+    .faq {
+      grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+      gap: var(--cabin-space-8);
+      align-items: start;
+    }
+  }
+
+  /* Header ------------------------------------------------------------ */
+
+  .faq__header {
+    display: grid;
+    gap: var(--cabin-space-3);
+    align-content: start;
+  }
+
+  .faq__eyebrow {
+    margin: 0;
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-xs);
+    font-weight: 500;
+    letter-spacing: var(--cabin-track-label);
+    text-transform: uppercase;
+    color: var(--cabin-brass);
+  }
+
+  .faq__heading {
+    margin: 0;
+    font-family: var(--cabin-font-display);
+    font-size: var(--cabin-fs-xl);
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: var(--cabin-track-display);
+    text-transform: uppercase;
+    color: var(--cabin-display);
+    overflow-wrap: anywhere;
+  }
+
+  .faq__count {
+    margin: 0;
+    font-family: var(--cabin-font-serif);
+    font-size: var(--cabin-fs-lg);
+    font-weight: 400;
+    letter-spacing: var(--cabin-track-serif);
+    color: var(--cabin-text-muted);
+  }
+
+  /* List -------------------------------------------------------------- */
+
+  .faq__list {
+    display: block;
+    min-width: 0;
+    border-block-start: 1px solid var(--cabin-border);
+  }
+
+  .faq__item {
+    border-block-end: 1px solid var(--cabin-border);
+    transition: border-color var(--cabin-dur-fast) var(--cabin-ease-out);
+  }
+
+  .faq__item[open] {
+    border-block-end-color: var(--cabin-border-strong);
+  }
+
+  /* Summary ----------------------------------------------------------- */
+
+  .faq__summary {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: var(--cabin-space-4);
+    min-height: 3.5rem;
+    padding-block: var(--cabin-space-5);
+    margin: 0;
+    cursor: pointer;
+    list-style: none;
+    color: var(--cabin-display);
+    transition: color var(--cabin-dur-fast) var(--cabin-ease-out);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .faq__summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .faq__summary::marker {
+    content: '';
+  }
+
+  .faq__summary:hover {
+    color: var(--cabin-brass);
+  }
+
+  .faq__summary:focus {
+    outline: none;
+  }
+
+  .faq__summary:focus-visible {
+    outline: 2px solid var(--cabin-brass);
+    outline-offset: 4px;
+    border-radius: var(--cabin-radius-sm);
+  }
+
+  .faq__index {
+    min-width: 1.75rem;
+    font-family: var(--cabin-font-serif);
+    font-size: var(--cabin-fs-md);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: var(--cabin-track-serif);
+    color: var(--cabin-text-muted);
+  }
+
+  /* Syne at label scale: small, tracked, uppercase. */
+  .faq__question {
+    font-family: var(--cabin-font-display);
+    font-size: var(--cabin-fs-sm);
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: var(--cabin-track-display);
+    text-transform: uppercase;
+    overflow-wrap: anywhere;
+  }
+
+  .faq__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border: 1px solid var(--cabin-border-strong);
+    border-radius: 50%;
+    color: var(--cabin-brass);
+    transition:
+      transform var(--cabin-dur-base) var(--cabin-ease-out),
+      border-color var(--cabin-dur-fast) var(--cabin-ease-out),
+      background-color var(--cabin-dur-fast) var(--cabin-ease-out);
+  }
+
+  .faq__icon svg {
+    display: block;
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+
+  .faq__summary:hover .faq__icon {
+    border-color: var(--cabin-brass);
+  }
+
+  /* Plus becomes a cross when the row is open. */
+  .faq__item[open] .faq__icon {
+    transform: rotate(45deg);
+    border-color: var(--cabin-brass);
+    background-color: var(--cabin-brass-glow);
+  }
+
+  /* Answer ------------------------------------------------------------ */
+
+  .faq__answer {
+    max-width: 62ch;
+    padding-block: 0 var(--cabin-space-6);
+    padding-inline-start: calc(1.75rem + var(--cabin-space-4));
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-md);
+    font-weight: 400;
+    line-height: 1.65;
+    color: var(--cabin-text);
+  }
+
+  @media screen and (max-width: 749px) {
+    .faq__answer {
+      padding-inline-start: 0;
+    }
+  }
+
+  .faq__item[open] .faq__answer {
+    animation: faq-answer-reveal var(--cabin-dur-base) var(--cabin-ease-out) both;
+  }
+
+  .faq__answer > :first-child {
+    margin-block-start: 0;
+  }
+
+  .faq__answer > :last-child {
+    margin-block-end: 0;
+  }
+
+  .faq__answer p,
+  .faq__answer ul,
+  .faq__answer ol {
+    margin-block: 0 var(--cabin-space-4);
+  }
+
+  .faq__answer ul,
+  .faq__answer ol {
+    padding-inline-start: 1.25em;
+  }
+
+  .faq__answer strong {
+    font-weight: 500;
+    color: var(--cabin-display);
+  }
+
+  .faq__answer a {
+    color: var(--cabin-display);
+    text-decoration: underline;
+    text-decoration-color: var(--cabin-brass);
+    text-underline-offset: 0.2em;
+    transition: color var(--cabin-dur-fast) var(--cabin-ease-out);
+  }
+
+  .faq__answer a:hover {
+    color: var(--cabin-brass);
+  }
+
+  .faq__answer a:focus-visible {
+    outline: 2px solid var(--cabin-brass);
+    outline-offset: 3px;
+    border-radius: var(--cabin-radius-sm);
+  }
+
+  /* One-shot reveal. Runs once per open; never loops. */
+  @keyframes faq-answer-reveal {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .faq__item[open] .faq__answer {
+      animation: none;
+    }
+  }
+{% endstylesheet %}
+
+{% schema %}
+{
+  "name": "FAQ",
+  "tag": "section",
+  "class": "section-wrapper cabin-section",
+  "disabled_on": {
+    "groups": ["header", "footer"]
+  },
+  "settings": [
+    {
+      "type": "text",
+      "id": "eyebrow",
+      "label": "Eyebrow",
+      "default": "Before you buy"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Questions"
+    },
+    {
+      "type": "header",
+      "content": "Padding"
+    },
+    {
+      "type": "range",
+      "id": "padding-block-start",
+      "label": "Top",
+      "min": 0,
+      "max": 100,
+      "step": 4,
+      "unit": "px",
+      "default": 48
+    },
+    {
+      "type": "range",
+      "id": "padding-block-end",
+      "label": "Bottom",
+      "min": 0,
+      "max": 100,
+      "step": 4,
+      "unit": "px",
+      "default": 48
+    }
+  ],
+  "blocks": [
+    {
+      "type": "question",
+      "name": "Question",
+      "settings": [
+        {
+          "type": "text",
+          "id": "heading",
+          "label": "Question",
+          "default": "New question"
+        },
+        {
+          "type": "richtext",
+          "id": "answer",
+          "label": "Answer",
+          "default": "<p>Write the answer here. Keep it to the evidence.</p>"
+        },
+        {
+          "type": "checkbox",
+          "id": "open",
+          "label": "Open by default",
+          "default": false
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "FAQ accordion",
+      "category": "Product",
+      "blocks": [
+        {
+          "type": "question",
+          "settings": {
+            "heading": "Will it leak?",
+            "answer": "<p>Not in testing. Before a stopper is approved it is held inverted for 24 hours, and the outside of the glass must stay dry. Assembled vessels then spend 14 days sealed in a shipping mailer, taped inside a vehicle boot during normal driving, to expose cap loosening and closure failure under real transit conditions. Any oil on the outside of the glass is a reject. So is oil wicking up the cord. Hardware that fails either gate is not used. Hang the vessel from the mirror stem, keep it upright, and do not leave it loose in a door pocket.</p>",
+            "open": true
+          }
+        },
+        {
+          "type": "question",
+          "settings": {
+            "heading": "Is it safe in summer heat?",
+            "answer": "<p>Yes. Every blend runs a 42-day heat soak in a sealed, south-facing car parked in sun, with the dashboard peak logged on a min-max thermometer every dry day. Thermal expansion, seepage, cap loosening in the neck and stress marks in the glass are each a reject criterion. Every oil we use has a closed-cup flashpoint above 60.5°C, the threshold Royal Mail applies to liquids in the post; most of the woody and amber materials we build on run above 80°C. Expect a stronger opening after the car has sat in heat. The headspace saturates, then settles once the doors open.</p>",
+            "open": false
+          }
+        },
+        {
+          "type": "question",
+          "settings": {
+            "heading": "Can it damage my interior?",
+            "answer": "<p>It can, if it spills. The carrier base is Augeo Clean Multi, and it strips paint and polish on contact. Keep the vessel away from painted, polished and plastic surfaces. Never rest it on the dashboard or in a door pocket. If oil reaches a surface, wipe it immediately with a dry cloth. Hung correctly, the vessel touches nothing, and a sealed unit has no path to the trim. Refills ship in narrow-neck flat bottles rather than wide-mouth vials, to keep drip to a minimum while you pour. Fill over a cloth, away from the car.</p>",
+            "open": false
+          }
+        }
+      ]
+    }
+  ]
+}
+{% endschema %}

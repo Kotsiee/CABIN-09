@@ -1,0 +1,1208 @@
+{% comment %}
+  CABIN-09 · Scent metrics panel
+
+  Renders the technical specification card for a product: intensity gauge,
+  longevity hero figure, seasonality pill, note-prominence stacked bar and the
+  optional mood / gender extras. Each block reads its product metafield in the
+  `cabin` namespace and falls back to the block's editor settings when the
+  metafield is empty, so the panel renders fully on a store with no custom data.
+
+  Metafields (namespace cabin)
+    intensity            number_integer     1-5 (falls back to cabin.sillage)
+    longevity_min_weeks  number_integer
+    longevity_max_weeks  number_integer
+    longevity_label      single_line_text   optional override, e.g. "Indefinite in a sealed cabin"
+    season               single_line_text   summer | winter | all-season
+    prominence_top       number_integer     0-100, normalised to 100 in Liquid
+    prominence_heart     number_integer
+    prominence_base      number_integer
+    mood_tags            list.single_line_text
+    gender_position      number_integer     0 masculine · 50 unisex · 100 feminine
+    scent_family         single_line_text   shown as a brass pill in the header
+
+  Markup contract
+    .metrics-panel[data-metrics-panel]    the .cabin-surface card; JS adds .is-armed then .is-visible
+    .metric-meter[role="meter"]           5-segment intensity gauge, filled segments carry .is-filled
+    .metric-segmented[role="group"]       season pill, active item carries aria-current="true"
+    .metric-stack[role="img"]             prominence bar, segments animate scaleX 0 → 1 on viewport entry
+{% endcomment %}
+
+{%- liquid
+  assign mf = product.metafields.cabin
+  assign scent_family = mf.scent_family.value
+  assign intensity_labels = 'Subtle,Close,Present,Bold,Commanding' | split: ','
+  assign season_keys = 'summer,winter,all-season' | split: ','
+  assign season_names = 'Summer,Winter,All-season' | split: ','
+  assign tier_keys = 'top,heart,base' | split: ','
+  assign tier_names = 'Top,Heart,Base' | split: ','
+-%}
+
+<div class="section-background"></div>
+<div
+  class="section section--page-width spacing-style cabin-theme metrics-section"
+  style="{% render 'spacing-padding', settings: section.settings %}"
+>
+  <div class="metrics-panel cabin-surface" data-metrics-panel>
+    <header class="metrics-panel__head">
+      <div class="metrics-panel__titles">
+        {%- if section.settings.eyebrow != blank -%}
+          <p class="metrics-panel__eyebrow cabin-eyebrow">{{ section.settings.eyebrow }}</p>
+        {%- endif -%}
+        {%- if section.settings.heading != blank -%}
+          <h2 class="metrics-panel__heading cabin-display cabin-display--md">{{ section.settings.heading }}</h2>
+        {%- endif -%}
+      </div>
+      {%- if scent_family != blank -%}
+        <span class="metrics-panel__family cabin-pill cabin-pill--brass">{{ scent_family | escape }}</span>
+      {%- endif -%}
+    </header>
+
+    {%- if section.blocks.size > 0 -%}
+      <div class="metrics-panel__grid">
+        {%- for block in section.blocks -%}
+          {%- case block.type -%}
+            {%- when 'intensity' -%}
+              {%- liquid
+                # Source: cabin.intensity → cabin.sillage → block fallback. Clamped to 1–5.
+                assign intensity = mf.intensity.value
+                if intensity == blank
+                  assign intensity = mf.sillage.value
+                endif
+                if intensity == blank
+                  assign intensity = block.settings.fallback
+                endif
+                assign intensity = intensity | plus: 0 | round
+                if intensity < 1
+                  assign intensity = 1
+                elsif intensity > 5
+                  assign intensity = 5
+                endif
+                assign intensity_index = intensity | minus: 1
+                assign intensity_name = intensity_labels[intensity_index]
+              -%}
+              <div class="metric metric--intensity" {{ block.shopify_attributes }}>
+                <div class="metric__head">
+                  <span class="metric__label cabin-label">{{ block.settings.label }}</span>
+                  <span class="metric__value" aria-hidden="true">
+                    {{- intensity_name -}}
+                    <span class="metric__value-sub">{{ intensity }} / 5</span>
+                  </span>
+                </div>
+                <div
+                  class="metric-meter"
+                  role="meter"
+                  aria-valuemin="1"
+                  aria-valuemax="5"
+                  aria-valuenow="{{ intensity }}"
+                  aria-valuetext="{{ intensity_name }}, {{ intensity }} of 5"
+                  aria-label="{{ block.settings.label | escape }}"
+                >
+                  {%- for i in (1..5) -%}
+                    <span class="metric-meter__seg{% if i <= intensity %} is-filled{% endif %}"></span>
+                  {%- endfor -%}
+                </div>
+                <div class="metric-meter__scale" aria-hidden="true">
+                  <span class="metric__scale-label cabin-label">{{ intensity_labels[0] }}</span>
+                  <span class="metric__scale-label cabin-label">{{ intensity_labels[4] }}</span>
+                </div>
+              </div>
+
+            {%- when 'longevity' -%}
+              {%- liquid
+                # Source: cabin.longevity_label overrides; otherwise min/max weeks; otherwise block fallbacks.
+                assign lon_label = mf.longevity_label.value
+                assign lon_min = mf.longevity_min_weeks.value
+                assign lon_max = mf.longevity_max_weeks.value
+                if lon_label == blank and lon_min == blank and lon_max == blank
+                  assign lon_min = block.settings.fallback_min
+                  assign lon_max = block.settings.fallback_max
+                endif
+                if lon_min == blank
+                  assign lon_min = lon_max
+                endif
+                if lon_max == blank
+                  assign lon_max = lon_min
+                endif
+                assign lon_min = lon_min | plus: 0 | round
+                assign lon_max = lon_max | plus: 0 | round
+                if lon_max < lon_min
+                  assign lon_swap = lon_min
+                  assign lon_min = lon_max
+                  assign lon_max = lon_swap
+                endif
+                if lon_min == lon_max
+                  assign lon_figure = lon_min
+                  assign lon_spoken = lon_min
+                else
+                  assign lon_figure = lon_min | append: '–' | append: lon_max
+                  assign lon_spoken = lon_min | append: ' to ' | append: lon_max
+                endif
+              -%}
+              <div class="metric metric--longevity" {{ block.shopify_attributes }}>
+                <div class="metric__head">
+                  <span class="metric__label cabin-label">{{ block.settings.label }}</span>
+                </div>
+                {%- if lon_label != blank -%}
+                  <p class="metric-hero__override cabin-serif cabin-serif--md">{{ lon_label | escape }}</p>
+                {%- else -%}
+                  <p class="metric-hero">
+                    <span class="metric-hero__value" aria-hidden="true">{{ lon_figure }}</span>
+                    <span class="cabin-visually-hidden">{{ lon_spoken }}</span>
+                    {%- if block.settings.unit != blank -%}
+                      <span class="metric-hero__unit">{{ block.settings.unit }}</span>
+                    {%- endif -%}
+                  </p>
+                {%- endif -%}
+                {%- if block.settings.footnote != blank -%}
+                  <p class="metric__footnote">{{ block.settings.footnote }}</p>
+                {%- endif -%}
+              </div>
+
+            {%- when 'season' -%}
+              {%- liquid
+                # Source: cabin.season (normalised: "All Season" / "all_season" → "all-season") → block fallback.
+                assign season = mf.season.value | downcase | strip | replace: ' ', '-' | replace: '_', '-'
+                unless season_keys contains season
+                  assign season = block.settings.fallback
+                endunless
+              -%}
+              <div class="metric metric--season" {{ block.shopify_attributes }}>
+                <div class="metric__head">
+                  <span class="metric__label cabin-label">{{ block.settings.label }}</span>
+                </div>
+                <div class="metric-segmented" role="group" aria-label="{{ block.settings.label | escape }}">
+                  {%- for key in season_keys -%}
+                    <span
+                      class="metric-segmented__item"
+                      {% if key == season %}
+                        aria-current="true"
+                      {% endif %}
+                    >
+                      {{- season_names[forloop.index0] -}}
+                      {%- if key == season -%}
+                        <span class="cabin-visually-hidden">, selected</span>
+                      {%- endif -%}
+                    </span>
+                  {%- endfor -%}
+                </div>
+              </div>
+
+            {%- when 'prominence' -%}
+              {%- liquid
+                # Source: cabin.prominence_top/_heart/_base → block fallbacks. Normalised so the three
+                # integer widths sum to exactly 100 (base takes the rounding remainder).
+                assign p_top = mf.prominence_top.value
+                assign p_heart = mf.prominence_heart.value
+                assign p_base = mf.prominence_base.value
+                if p_top == blank and p_heart == blank and p_base == blank
+                  assign p_top = block.settings.fallback_top
+                  assign p_heart = block.settings.fallback_heart
+                  assign p_base = block.settings.fallback_base
+                endif
+                assign p_top = p_top | plus: 0 | at_least: 0
+                assign p_heart = p_heart | plus: 0 | at_least: 0
+                assign p_base = p_base | plus: 0 | at_least: 0
+                assign p_sum = p_top | plus: p_heart | plus: p_base
+                if p_sum <= 0
+                  assign p_top = block.settings.fallback_top | plus: 0 | at_least: 0
+                  assign p_heart = block.settings.fallback_heart | plus: 0 | at_least: 0
+                  assign p_base = block.settings.fallback_base | plus: 0 | at_least: 0
+                  assign p_sum = p_top | plus: p_heart | plus: p_base
+                endif
+                if p_sum <= 0
+                  assign p_top = 1
+                  assign p_heart = 1
+                  assign p_base = 1
+                  assign p_sum = 3
+                endif
+                assign w_top = p_top | times: 100.0 | divided_by: p_sum | round
+                assign w_heart = p_heart | times: 100.0 | divided_by: p_sum | round
+                assign w_base = 100 | minus: w_top | minus: w_heart
+                if w_base < 0
+                  assign w_heart = w_heart | plus: w_base
+                  assign w_base = 0
+                endif
+                assign tier_widths = w_top | append: ',' | append: w_heart | append: ',' | append: w_base | split: ','
+              -%}
+              <div class="metric metric--prominence metric--wide" {{ block.shopify_attributes }}>
+                <div class="metric__head">
+                  <span class="metric__label cabin-label">{{ block.settings.label }}</span>
+                  {%- if block.settings.caption != blank -%}
+                    <span class="metric__caption">{{ block.settings.caption }}</span>
+                  {%- endif -%}
+                </div>
+                <div
+                  class="metric-stack"
+                  role="img"
+                  aria-label="{{ block.settings.label | escape }}: top {{ w_top }} percent, heart {{ w_heart }} percent, base {{ w_base }} percent"
+                  data-metric-stack
+                >
+                  {%- for tier in tier_keys -%}
+                    {%- liquid
+                      assign tier_width = tier_widths[forloop.index0] | plus: 0
+                      assign tier_delay = forloop.index0 | times: 120
+                      assign window_key = 'window_' | append: tier
+                      assign tier_window = block.settings[window_key]
+                    -%}
+                    <span
+                      class="metric-stack__seg metric-tier--{{ tier }}{% if tier_width == 0 %} is-empty{% endif %}"
+                      style="--metric-seg-width: {{ tier_width }}%; --metric-seg-delay: {{ tier_delay }}ms;"
+                    >
+                      <span class="metric-stack__tip" aria-hidden="true">
+                        {{- tier_names[forloop.index0] }} · {{ tier_width -}}%
+                      </span>
+                    </span>
+                  {%- endfor -%}
+                </div>
+                <ul class="metric-stack__legend" role="list">
+                  {%- for tier in tier_keys -%}
+                    {%- liquid
+                      assign tier_width = tier_widths[forloop.index0] | plus: 0
+                      assign window_key = 'window_' | append: tier
+                      assign tier_window = block.settings[window_key]
+                    -%}
+                    <li class="metric-stack__item metric-tier--{{ tier }}">
+                      <span class="metric-stack__swatch" aria-hidden="true"></span>
+                      <span class="metric-stack__name">{{ tier_names[forloop.index0] }}</span>
+                      <span class="metric-stack__pct">{{ tier_width }}%</span>
+                      {%- if tier_window != blank -%}
+                        <span class="metric-stack__window">{{ tier_window }}</span>
+                      {%- endif -%}
+                    </li>
+                  {%- endfor -%}
+                </ul>
+              </div>
+
+            {%- when 'mood' -%}
+              {%- liquid
+                # Source: cabin.mood_tags (list, or a comma-separated text value) → block fallback text.
+                assign moods = mf.mood_tags.value | join: ',' | split: ','
+                if moods.size == 0
+                  assign moods = block.settings.fallback | split: ','
+                endif
+              -%}
+              {%- if moods.size > 0 -%}
+                <div class="metric metric--mood" {{ block.shopify_attributes }}>
+                  <div class="metric__head">
+                    <span class="metric__label cabin-label">{{ block.settings.label }}</span>
+                  </div>
+                  <ul class="metric-tags" role="list" aria-label="{{ block.settings.label | escape }}">
+                    {%- for mood in moods -%}
+                      {%- assign mood_text = mood | strip -%}
+                      {%- if mood_text != blank -%}
+                        <li class="metric-tags__item cabin-pill">{{ mood_text | escape }}</li>
+                      {%- endif -%}
+                    {%- endfor -%}
+                  </ul>
+                </div>
+              {%- endif -%}
+
+            {%- when 'gender' -%}
+              {%- liquid
+                # Source: cabin.gender_position → block fallback. Clamped to 0–100.
+                assign gender = mf.gender_position.value
+                if gender == blank
+                  assign gender = block.settings.fallback
+                endif
+                assign gender = gender | plus: 0 | round
+                if gender < 0
+                  assign gender = 0
+                elsif gender > 100
+                  assign gender = 100
+                endif
+                if gender < 50
+                  assign gender_lead = 50 | minus: gender | times: 2
+                  assign gender_rest = 100 | minus: gender_lead
+                  assign gender_readout = gender_lead | append: '% Masculine / ' | append: gender_rest | append: '% Unisex'
+                elsif gender > 50
+                  assign gender_lead = gender | minus: 50 | times: 2
+                  assign gender_rest = 100 | minus: gender_lead
+                  assign gender_readout = gender_lead | append: '% Feminine / ' | append: gender_rest | append: '% Unisex'
+                else
+                  assign gender_readout = '100% Unisex'
+                endif
+              -%}
+              <div class="metric metric--gender metric--wide" {{ block.shopify_attributes }}>
+                <div class="metric__head">
+                  <span class="metric__label cabin-label">{{ block.settings.label }}</span>
+                  <span class="metric__value" aria-hidden="true">{{ gender_readout }}</span>
+                </div>
+                <div
+                  class="metric-spectrum"
+                  role="img"
+                  aria-label="{{ block.settings.label | escape }}: {{ gender_readout }}"
+                >
+                  <span class="metric-spectrum__marker" style="--metric-pos: {{ gender }}%;"></span>
+                </div>
+                <div class="metric-spectrum__scale" aria-hidden="true">
+                  <span class="metric__scale-label cabin-label">Masculine</span>
+                  <span class="metric__scale-label cabin-label">Unisex</span>
+                  <span class="metric__scale-label cabin-label">Feminine</span>
+                </div>
+              </div>
+          {%- endcase -%}
+        {%- endfor -%}
+      </div>
+    {%- endif -%}
+  </div>
+</div>
+
+{% stylesheet %}
+  /* ------------------------------------------------------------------ */
+  /* Panel shell                                                         */
+  /* ------------------------------------------------------------------ */
+  .metrics-panel {
+    min-width: 0;
+    padding: clamp(1.25rem, 3vw, 2.5rem);
+  }
+
+  .metrics-panel__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--cabin-space-3) var(--cabin-space-5);
+    margin-block-end: var(--cabin-space-6);
+    padding-block-end: var(--cabin-space-4);
+    border-block-end: 1px solid var(--cabin-border);
+  }
+
+  .metrics-panel__titles {
+    min-width: 0;
+  }
+
+  .metrics-panel__eyebrow {
+    margin: 0 0 var(--cabin-space-2);
+  }
+
+  .metrics-panel__heading {
+    margin: 0;
+  }
+
+  .metrics-panel__family {
+    flex: 0 0 auto;
+  }
+
+  .metrics-panel__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+    gap: var(--cabin-space-6) var(--cabin-space-7);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Metric block                                                        */
+  /* ------------------------------------------------------------------ */
+  .metric {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cabin-space-3);
+    min-width: 0;
+  }
+
+  .metric--wide {
+    grid-column: 1 / -1;
+  }
+
+  .metric__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--cabin-space-1) var(--cabin-space-3);
+  }
+
+  .metric__value {
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-sm);
+    font-weight: 500;
+    color: var(--cabin-display);
+    text-align: end;
+  }
+
+  .metric__value-sub {
+    margin-inline-start: var(--cabin-space-2);
+    font-weight: 400;
+    color: var(--cabin-text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .metric__caption {
+    font-family: var(--cabin-font-serif);
+    font-size: var(--cabin-fs-sm);
+    letter-spacing: var(--cabin-track-serif);
+    color: var(--cabin-text-muted);
+  }
+
+  .metric__footnote {
+    margin: 0;
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-sm);
+    line-height: 1.5;
+    color: var(--cabin-text-muted);
+  }
+
+  .metric__scale-label {
+    font-size: var(--cabin-fs-2xs);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Intensity gauge: 5 discrete segments, brass fill on a brass track   */
+  /* ------------------------------------------------------------------ */
+  .metric-meter {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 3px;
+    height: 10px;
+  }
+
+  .metric-meter__seg {
+    display: block;
+    border-radius: var(--cabin-radius-sm);
+    background: rgba(var(--cabin-brass-rgb), 0.18);
+    transition: background-color var(--cabin-dur-fast) var(--cabin-ease-out);
+  }
+
+  .metric-meter__seg.is-filled {
+    background: var(--cabin-brass);
+  }
+
+  .metric-meter__seg:first-child {
+    border-start-start-radius: 4px;
+    border-end-start-radius: 4px;
+  }
+
+  .metric-meter__seg:last-child {
+    border-start-end-radius: 4px;
+    border-end-end-radius: 4px;
+  }
+
+  .metric-meter__scale {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--cabin-space-3);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Longevity hero figure: Syne number + serif unit                     */
+  /* ------------------------------------------------------------------ */
+  .metric-hero {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--cabin-space-2) var(--cabin-space-3);
+    margin: 0;
+  }
+
+  .metric-hero__value {
+    font-family: var(--cabin-font-display);
+    font-size: clamp(2.25rem, 5vw, 3rem);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    color: var(--cabin-display);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .metric-hero__unit {
+    font-family: var(--cabin-font-serif);
+    font-size: var(--cabin-fs-lg);
+    letter-spacing: var(--cabin-track-serif);
+    color: var(--cabin-text);
+  }
+
+  .metric-hero__override {
+    margin: 0;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Season: 3-segment pill, active segment filled brass                 */
+  /* ------------------------------------------------------------------ */
+  .metric-segmented {
+    display: flex;
+    max-width: 100%;
+    padding: 3px;
+    border: 1px solid var(--cabin-border);
+    border-radius: var(--cabin-radius-pill);
+    background: var(--cabin-canvas);
+  }
+
+  .metric-segmented__item {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0.45rem 0.6rem;
+    border-radius: var(--cabin-radius-pill);
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-xs);
+    font-weight: 500;
+    letter-spacing: var(--cabin-track-label);
+    text-transform: uppercase;
+    text-align: center;
+    color: var(--cabin-text-muted);
+    white-space: nowrap;
+    transition: background-color var(--cabin-dur-fast) var(--cabin-ease-out), color var(--cabin-dur-fast) var(--cabin-ease-out);
+  }
+
+  .metric-segmented__item[aria-current='true'] {
+    color: var(--cabin-canvas);
+    background: var(--cabin-brass);
+  }
+
+  @media screen and (min-width: 750px) {
+    .metric-segmented {
+      display: inline-flex;
+      width: fit-content;
+    }
+
+    .metric-segmented__item {
+      flex: 0 0 auto;
+      padding-inline: 0.9rem;
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Note prominence: stacked bar in the brass ramp + itemised legend    */
+  /* ------------------------------------------------------------------ */
+  .metric-tier--top {
+    --metric-tier-color: var(--cabin-ramp-top);
+  }
+
+  .metric-tier--heart {
+    --metric-tier-color: var(--cabin-ramp-heart);
+  }
+
+  .metric-tier--base {
+    --metric-tier-color: var(--cabin-ramp-base);
+  }
+
+  .metric-stack {
+    display: flex;
+    gap: 2px;
+    height: 10px;
+    margin-block-start: var(--cabin-space-2);
+  }
+
+  .metric-stack__seg {
+    position: relative;
+    display: block;
+    flex: 0 1 var(--metric-seg-width, 0%);
+    min-width: 0;
+    height: 100%;
+    border-radius: var(--cabin-radius-sm);
+    background: var(--metric-tier-color, var(--cabin-brass));
+    transform-origin: left center;
+    transition: transform var(--cabin-dur-slow) var(--cabin-ease-out) var(--metric-seg-delay, 0ms);
+  }
+
+  .metric-stack__seg.is-empty {
+    display: none;
+  }
+
+  .metric-stack__seg:first-child {
+    border-start-start-radius: 4px;
+    border-end-start-radius: 4px;
+  }
+
+  .metric-stack__seg:last-child {
+    border-start-end-radius: 4px;
+    border-end-end-radius: 4px;
+  }
+
+  /* Bars are full by default (no JS). JS arms the panel (collapsed) and reveals it on viewport entry.
+     Arming snaps (no transition) so a panel that was painted before the deferred script ran never
+     shrinks on screen; the transition comes back with .is-visible, so the growth still animates. */
+  .metrics-panel.is-armed:not(.is-visible) .metric-stack__seg {
+    transform: scaleX(0);
+    transition: none;
+  }
+
+  .metrics-panel.is-visible .metric-stack__seg {
+    transform: scaleX(1);
+  }
+
+  .metric-stack__tip {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 8px);
+    z-index: var(--cabin-z-note-raised);
+    padding: 0.35rem 0.6rem;
+    border: 1px solid var(--cabin-border);
+    border-radius: var(--cabin-radius-sm);
+    background: var(--cabin-elevation-2);
+    box-shadow: var(--cabin-shadow-card);
+    color: var(--cabin-display);
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-xs);
+    font-weight: 500;
+    line-height: 1.2;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, 4px);
+    transition: opacity var(--cabin-dur-fast) var(--cabin-ease-out), transform var(--cabin-dur-fast) var(--cabin-ease-out);
+  }
+
+  /* Hover-only: the bar is a single role="img"; the legend below carries the per-tier detail for keyboard and AT users. */
+  .metric-stack__seg:hover .metric-stack__tip {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  .metric-stack__legend {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--cabin-space-3) var(--cabin-space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .metric-stack__item {
+    display: grid;
+    grid-template-columns: 8px minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    column-gap: var(--cabin-space-2);
+    row-gap: 2px;
+    align-items: start;
+    min-width: 0;
+  }
+
+  .metric-stack__swatch {
+    grid-row: 1 / -1;
+    width: 8px;
+    height: 8px;
+    margin-block-start: 0.3rem;
+    border-radius: 2px;
+    background: var(--metric-tier-color, var(--cabin-brass));
+  }
+
+  .metric-stack__name {
+    grid-column: 2;
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-xs);
+    font-weight: 500;
+    letter-spacing: var(--cabin-track-label);
+    text-transform: uppercase;
+    color: var(--cabin-text-muted);
+  }
+
+  .metric-stack__pct {
+    grid-column: 2;
+    font-family: var(--cabin-font-ui);
+    font-size: var(--cabin-fs-md);
+    font-weight: 500;
+    color: var(--cabin-display);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .metric-stack__window {
+    grid-column: 2;
+    font-family: var(--cabin-font-serif);
+    font-size: var(--cabin-fs-sm);
+    letter-spacing: var(--cabin-track-serif);
+    line-height: 1.35;
+    color: var(--cabin-text-muted);
+  }
+
+  /* Phones: one legend row per tier — swatch · name · % · window on a single line */
+  @media screen and (max-width: 749px) {
+    .metric-stack__legend {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--cabin-space-2);
+    }
+
+    .metric-stack__item {
+      grid-template-columns: 8px auto auto minmax(0, 1fr);
+      grid-template-rows: auto;
+      column-gap: var(--cabin-space-3);
+      align-items: baseline;
+    }
+
+    .metric-stack__swatch {
+      grid-row: auto;
+      align-self: center;
+      margin-block-start: 0;
+    }
+
+    .metric-stack__name,
+    .metric-stack__pct,
+    .metric-stack__window {
+      grid-column: auto;
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Mood tags                                                           */
+  /* ------------------------------------------------------------------ */
+  .metric-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cabin-space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Gender spectrum: three labelled zones on the brass ramp + marker    */
+  /* ------------------------------------------------------------------ */
+  .metric-spectrum {
+    position: relative;
+    height: 10px;
+    margin-block: var(--cabin-space-2);
+    border-radius: 4px;
+    background: linear-gradient(90deg, var(--cabin-brass-deep) 0%, var(--cabin-brass) 50%, var(--cabin-brass-light) 100%);
+  }
+
+  .metric-spectrum::before,
+  .metric-spectrum::after {
+    content: '';
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 1px;
+    background: var(--cabin-elevation);
+  }
+
+  .metric-spectrum::before {
+    left: calc(100% / 3);
+  }
+
+  .metric-spectrum::after {
+    left: calc(200% / 3);
+  }
+
+  .metric-spectrum__marker {
+    position: absolute;
+    top: 50%;
+    left: var(--metric-pos, 50%);
+    z-index: var(--cabin-z-note);
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--cabin-display);
+    box-shadow: 0 0 0 2px var(--cabin-elevation), 0 0 0 3px var(--cabin-brass);
+    transform: translate(-50%, -50%);
+    transition: left var(--cabin-dur-slow) var(--cabin-ease-out);
+  }
+
+  .metric-spectrum__scale {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .metric-spectrum__scale > :nth-child(2) {
+    text-align: center;
+  }
+
+  .metric-spectrum__scale > :last-child {
+    text-align: end;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Reduced motion: no growth, no marker slide                          */
+  /* ------------------------------------------------------------------ */
+  @media (prefers-reduced-motion: reduce) {
+    .metrics-panel .metric-stack__seg {
+      transform: none;
+      transition: none;
+    }
+
+    .metric-spectrum__marker,
+    .metric-stack__tip,
+    .metric-segmented__item,
+    .metric-meter__seg {
+      transition: none;
+    }
+  }
+{% endstylesheet %}
+
+{% javascript %}
+  /**
+   * CABIN-09 metrics panel.
+   *
+   * Arms each `[data-metrics-panel]` (collapsing its prominence bar segments via
+   * `.is-armed`) and adds `.is-visible` once the bar enters the viewport, which
+   * plays the staggered scaleX growth defined in the stylesheet.
+   *
+   * Progressive enhancement: without this script the bars render full. Under
+   * `prefers-reduced-motion`, or without IntersectionObserver, the panel is
+   * marked visible immediately and nothing animates.
+   */
+  (function () {
+    var PANEL_SELECTOR = '[data-metrics-panel]';
+    var STACK_SELECTOR = '[data-metric-stack]';
+    var reduceMotion = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+    var observer = null;
+
+    /**
+     * Marks a panel as visible, which triggers the bar growth transition.
+     * @param {HTMLElement} panel
+     */
+    function reveal(panel) {
+      panel.classList.add('is-visible');
+    }
+
+    /**
+     * Returns the shared IntersectionObserver, creating it on first use.
+     * @returns {IntersectionObserver}
+     */
+    function getObserver() {
+      if (observer) return observer;
+
+      observer = new IntersectionObserver(
+        function (entries) {
+          entries.forEach(function (entry) {
+            if (!entry.isIntersecting) return;
+
+            var panel = entry.target.closest(PANEL_SELECTOR);
+            if (panel) reveal(panel);
+            observer.unobserve(entry.target);
+          });
+        },
+        { threshold: 1, rootMargin: '0px 0px -10% 0px' }
+      );
+
+      return observer;
+    }
+
+    /**
+     * Arms one panel: collapses its bars and waits for them to scroll into view.
+     * @param {HTMLElement} panel
+     */
+    function arm(panel) {
+      if (panel.dataset.metricsArmed === 'true') return;
+      panel.dataset.metricsArmed = 'true';
+
+      var stacks = panel.querySelectorAll(STACK_SELECTOR);
+      var canAnimate = 'IntersectionObserver' in window && !(reduceMotion && reduceMotion.matches);
+
+      if (!stacks.length || !canAnimate) {
+        reveal(panel);
+        return;
+      }
+
+      panel.classList.add('is-armed');
+
+      // Flush styles so the collapsed state is committed before the reveal transition starts.
+      void panel.offsetWidth;
+
+      stacks.forEach(function (stack) {
+        getObserver().observe(stack);
+      });
+    }
+
+    /**
+     * Arms every panel inside `root` (defaults to the whole document).
+     * @param {ParentNode} [root]
+     */
+    function init(root) {
+      (root || document).querySelectorAll(PANEL_SELECTOR).forEach(arm);
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function () { init(); }, { once: true });
+    } else {
+      init();
+    }
+
+    // Theme editor: re-arm when the section is re-rendered.
+    document.addEventListener('shopify:section:load', function (event) {
+      init(event.target);
+    });
+  })();
+{% endjavascript %}
+
+{% schema %}
+{
+  "name": "Scent metrics panel",
+  "tag": "section",
+  "class": "section-wrapper cabin-section",
+  "enabled_on": {
+    "templates": ["product"]
+  },
+  "settings": [
+    {
+      "type": "text",
+      "id": "eyebrow",
+      "label": "Eyebrow",
+      "default": "Technical specification"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Cabin performance"
+    },
+    {
+      "type": "paragraph",
+      "content": "The scent family (cabin.scent_family metafield) is shown as a brass pill in the header when present."
+    },
+    {
+      "type": "header",
+      "content": "Padding"
+    },
+    {
+      "type": "range",
+      "id": "padding-block-start",
+      "label": "Top",
+      "min": 0,
+      "max": 100,
+      "step": 4,
+      "unit": "px",
+      "default": 48
+    },
+    {
+      "type": "range",
+      "id": "padding-block-end",
+      "label": "Bottom",
+      "min": 0,
+      "max": 100,
+      "step": 4,
+      "unit": "px",
+      "default": 48
+    }
+  ],
+  "blocks": [
+    {
+      "type": "intensity",
+      "name": "Intensity gauge",
+      "limit": 1,
+      "settings": [
+        {
+          "type": "text",
+          "id": "label",
+          "label": "Label",
+          "default": "Intensity"
+        },
+        {
+          "type": "range",
+          "id": "fallback",
+          "label": "Fallback intensity",
+          "info": "Used when the cabin.intensity (or cabin.sillage) metafield is empty. 1 Subtle · 2 Close · 3 Present · 4 Bold · 5 Commanding.",
+          "min": 1,
+          "max": 5,
+          "step": 1,
+          "default": 3
+        }
+      ]
+    },
+    {
+      "type": "longevity",
+      "name": "Longevity",
+      "limit": 1,
+      "settings": [
+        {
+          "type": "text",
+          "id": "label",
+          "label": "Label",
+          "default": "Estimated longevity"
+        },
+        {
+          "type": "text",
+          "id": "unit",
+          "label": "Unit",
+          "default": "weeks active diffusion"
+        },
+        {
+          "type": "text",
+          "id": "footnote",
+          "label": "Footnote",
+          "default": "Derived from 42-day mass-loss curves, stated conservatively."
+        },
+        {
+          "type": "range",
+          "id": "fallback_min",
+          "label": "Fallback minimum weeks",
+          "info": "Used when the cabin.longevity metafields are empty.",
+          "min": 1,
+          "max": 52,
+          "step": 1,
+          "default": 4
+        },
+        {
+          "type": "range",
+          "id": "fallback_max",
+          "label": "Fallback maximum weeks",
+          "min": 1,
+          "max": 52,
+          "step": 1,
+          "default": 6
+        }
+      ]
+    },
+    {
+      "type": "season",
+      "name": "Seasonality",
+      "limit": 1,
+      "settings": [
+        {
+          "type": "text",
+          "id": "label",
+          "label": "Label",
+          "default": "Seasonality"
+        },
+        {
+          "type": "select",
+          "id": "fallback",
+          "label": "Fallback season",
+          "info": "Used when the cabin.season metafield is empty.",
+          "options": [
+            {
+              "value": "summer",
+              "label": "Summer"
+            },
+            {
+              "value": "winter",
+              "label": "Winter"
+            },
+            {
+              "value": "all-season",
+              "label": "All-season"
+            }
+          ],
+          "default": "all-season"
+        }
+      ]
+    },
+    {
+      "type": "prominence",
+      "name": "Note prominence",
+      "limit": 1,
+      "settings": [
+        {
+          "type": "text",
+          "id": "label",
+          "label": "Label",
+          "default": "Note prominence"
+        },
+        {
+          "type": "text",
+          "id": "caption",
+          "label": "Caption",
+          "default": "Share of character across the vessel's life"
+        },
+        {
+          "type": "header",
+          "content": "Evaporation windows"
+        },
+        {
+          "type": "text",
+          "id": "window_top",
+          "label": "Top note window",
+          "default": "First 10 to 20 min"
+        },
+        {
+          "type": "text",
+          "id": "window_heart",
+          "label": "Heart note window",
+          "default": "Hours 1 to 6"
+        },
+        {
+          "type": "text",
+          "id": "window_base",
+          "label": "Base note window",
+          "default": "The lingering signature"
+        },
+        {
+          "type": "header",
+          "content": "Fallback shares",
+          "info": "Used when the cabin.prominence metafields are empty. The three values are normalised to 100."
+        },
+        {
+          "type": "range",
+          "id": "fallback_top",
+          "label": "Top",
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "unit": "%",
+          "default": 20
+        },
+        {
+          "type": "range",
+          "id": "fallback_heart",
+          "label": "Heart",
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "unit": "%",
+          "default": 35
+        },
+        {
+          "type": "range",
+          "id": "fallback_base",
+          "label": "Base",
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "unit": "%",
+          "default": 45
+        }
+      ]
+    },
+    {
+      "type": "mood",
+      "name": "Mood tags",
+      "limit": 1,
+      "settings": [
+        {
+          "type": "text",
+          "id": "label",
+          "label": "Label",
+          "default": "Olfactory tone"
+        },
+        {
+          "type": "text",
+          "id": "fallback",
+          "label": "Fallback tags",
+          "info": "Comma-separated. Used when the cabin.mood_tags metafield is empty.",
+          "default": "Dry, Resinous, Reserved"
+        }
+      ]
+    },
+    {
+      "type": "gender",
+      "name": "Gender spectrum",
+      "limit": 1,
+      "settings": [
+        {
+          "type": "text",
+          "id": "label",
+          "label": "Label",
+          "default": "Reads as"
+        },
+        {
+          "type": "range",
+          "id": "fallback",
+          "label": "Fallback position",
+          "info": "Used when the cabin.gender_position metafield is empty. 0 masculine · 50 unisex · 100 feminine.",
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "default": 50
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Scent metrics panel",
+      "category": "Product",
+      "blocks": [
+        {
+          "type": "intensity"
+        },
+        {
+          "type": "longevity"
+        },
+        {
+          "type": "season"
+        },
+        {
+          "type": "prominence"
+        }
+      ]
+    }
+  ]
+}
+{% endschema %}

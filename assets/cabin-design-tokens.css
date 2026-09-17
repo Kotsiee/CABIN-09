@@ -1,0 +1,501 @@
+/* ==========================================================================
+   CABIN-09 design tokens
+   --------------------------------------------------------------------------
+   Global design system for the CABIN-09 components (scent fan, metrics
+   panel, waitlist, refill upsell, FAQ, product cards).
+
+   Loaded from layout/theme.liquid straight after Horizon's base.css, so
+   every rule here can override base.css at equal specificity, and every
+   CABIN-09 component may rely on these tokens and utility classes existing
+   globally.
+
+   Rules of the system
+   - Brass (--cabin-brass) is the only accent hue. Text always uses a text
+     token; the brass ramp is reserved for data marks and rules.
+   - Nothing bounces, nothing loops. Every transition uses --cabin-ease-out
+     and a --cabin-dur-* token, and every duration collapses to 0ms under
+     prefers-reduced-motion.
+   - Utility classes are prefixed `cabin-`. Component CSS lives with the
+     component in its own Liquid stylesheet tag; only shared tokens and
+     utilities belong here.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. Tokens
+   -------------------------------------------------------------------------- */
+
+:root {
+  /* Surfaces
+     Canvas is deliberately not pure black; each elevation step lifts it
+     slightly so surfaces read as layers rather than holes. */
+  --cabin-canvas: #0b0b0c;
+  --cabin-elevation: #141416;
+  --cabin-elevation-2: #1b1b1e;
+  --cabin-border: #242428;
+  --cabin-border-strong: #34343a;
+  --cabin-border-control: rgba(214, 214, 214, 0.45); /* input and radio boundaries: 3.4:1 on canvas and elevation (WCAG 1.4.11) */
+
+  /* Text */
+  --cabin-text: rgba(214, 214, 214, 0.85);
+  --cabin-text-solid: #d6d6d6;
+  --cabin-text-muted: rgba(214, 214, 214, 0.58); /* 4.8:1 on elevation-2, the darkest surface it sits on */
+  --cabin-display: #f5f5f7;
+
+  /* Brass, the only accent */
+  --cabin-brass: #b08d57;
+  --cabin-brass-light: #ebddbe;
+  --cabin-brass-deep: #5e4a2c;
+  --cabin-brass-glow: rgba(176, 141, 87, 0.18);
+  --cabin-brass-rgb: 176, 141, 87;
+
+  /* Brass ramp for data marks (top -> heart -> base = light -> brass -> deep) */
+  --cabin-ramp-top: var(--cabin-brass-light);
+  --cabin-ramp-heart: var(--cabin-brass);
+  --cabin-ramp-base: var(--cabin-brass-deep);
+
+  /* Form states only */
+  --cabin-state-ok: #8fb08a;
+  --cabin-state-error: #c76b6b;
+
+  /* Type families
+     display: headings, 600, uppercase, tracked 0.2em
+     serif:   editorial / pyramid notes, 400, tracked 0.08em
+     ui:      body, specs, forms, 400 / 500 */
+  --cabin-font-display: 'Syne', 'Helvetica Neue', Arial, sans-serif;
+  --cabin-font-serif: 'Cormorant Garamond', 'Times New Roman', Georgia, serif;
+  --cabin-font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Tracking */
+  --cabin-track-display: 0.2em;
+  --cabin-track-serif: 0.08em;
+  --cabin-track-label: 0.14em;
+
+  /* Type scale: 10 / 11 / 13 / 15 / 20 / 28 px, 2xl is fluid */
+  --cabin-fs-2xs: 0.625rem;
+  --cabin-fs-xs: 0.6875rem;
+  --cabin-fs-sm: 0.8125rem;
+  --cabin-fs-md: 0.9375rem;
+  --cabin-fs-lg: 1.25rem;
+  --cabin-fs-xl: 1.75rem;
+  --cabin-fs-2xl: clamp(2rem, 4vw, 3.25rem);
+
+  /* Spacing: 4 / 8 / 12 / 16 / 24 / 32 / 48 / 72 px */
+  --cabin-space-1: 0.25rem;
+  --cabin-space-2: 0.5rem;
+  --cabin-space-3: 0.75rem;
+  --cabin-space-4: 1rem;
+  --cabin-space-5: 1.5rem;
+  --cabin-space-6: 2rem;
+  --cabin-space-7: 3rem;
+  --cabin-space-8: 4.5rem;
+
+  /* Radii */
+  --cabin-radius-sm: 2px;
+  --cabin-radius-md: 4px;
+  --cabin-radius-pill: 999px;
+
+  /* Motion */
+  --cabin-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --cabin-dur-fast: 180ms;
+  --cabin-dur-base: 350ms;
+  --cabin-dur-slow: 600ms;
+
+  /* Shadows */
+  --cabin-shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 12px 32px rgba(0, 0, 0, 0.45);
+  --cabin-shadow-float: 0 24px 64px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--cabin-border);
+  --cabin-shadow-note: 0 6px 18px rgba(0, 0, 0, 0.5);
+  --cabin-shadow-note-raised: 0 18px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(var(--cabin-brass-rgb), 0.35);
+
+  /* Layering */
+  --cabin-z-note: 1;
+  --cabin-z-vessel: 3;
+  --cabin-z-note-raised: 4;
+  --cabin-z-modal: 1000;
+
+  /* Scent fan geometry (grid mode defaults; PDP mode overrides locally) */
+  --cabin-fan-angle: 14deg;
+  --cabin-fan-lift: -12%;
+  --cabin-fan-spread: 26%;
+}
+
+/* --------------------------------------------------------------------------
+   2. Horizon bridge
+   --------------------------------------------------------------------------
+   Horizon declares its base font variables on :root in
+   snippets/theme-styles-variables.liquid and derives every preset there
+   too (--font-h1..h6--*, --button-font-family-*, --cart-*-font-*) as
+   var(--font-heading--family) etc., mapped through the merchant's
+   Typography / Buttons / Cart role settings.
+
+   Because var() is substituted at computed-value time on the element that
+   declares it, the bridge must override the base families on that SAME
+   element (the root) so every derived preset picks them up while the
+   merchant's role selects keep working. html:root (0,1,1) out-specifies
+   Horizon's :root (0,1,0), which is needed because this file is linked
+   before theme-styles-variables in layout/theme.liquid.
+
+   Heading weight: settings.type_heading_font is inter_n7, which would make
+   --font-heading--weight resolve to 700; the system wants Syne 600, so the
+   weight is pinned here. Case and tracking for h1-h3 come from
+   settings_data.json (type_case_* / type_letter_spacing_*).
+   -------------------------------------------------------------------------- */
+
+html:root {
+  --font-heading--family: var(--cabin-font-display);
+  --font-heading--weight: 600;
+  --font-subheading--family: var(--cabin-font-ui);
+  --font-subheading--weight: 500;
+  --font-body--family: var(--cabin-font-ui);
+  --font-body--weight: 400;
+  --font-accent--family: var(--cabin-font-serif);
+  --font-accent--weight: 400;
+}
+
+.cabin-theme {
+  color: var(--cabin-text);
+  font-family: var(--cabin-font-ui);
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body.cabin-theme {
+  background: var(--cabin-canvas);
+  color: var(--cabin-text);
+}
+
+/* Brass focus rings across the theme. Horizon draws focus with
+   `outline: <width> solid currentcolor`; only the colour is changed so the
+   theme's width and offset are kept. */
+body.cabin-theme :focus-visible {
+  outline-color: var(--cabin-brass);
+}
+
+/* --------------------------------------------------------------------------
+   3. Typography utilities
+   -------------------------------------------------------------------------- */
+
+/* Display: Syne, 600, uppercase, wide tracking */
+.cabin-display {
+  font-family: var(--cabin-font-display);
+  font-weight: 600;
+  letter-spacing: var(--cabin-track-display);
+  text-transform: uppercase;
+  color: var(--cabin-display);
+  line-height: 1.1;
+}
+
+.cabin-display--xl {
+  font-size: var(--cabin-fs-2xl);
+}
+
+.cabin-display--lg {
+  font-size: var(--cabin-fs-xl);
+}
+
+.cabin-display--md {
+  font-size: var(--cabin-fs-lg);
+}
+
+.cabin-display--sm {
+  font-size: var(--cabin-fs-sm);
+}
+
+/* Serif: Cormorant Garamond, editorial voice */
+.cabin-serif {
+  font-family: var(--cabin-font-serif);
+  font-weight: 400;
+  letter-spacing: var(--cabin-track-serif);
+  color: var(--cabin-display);
+  line-height: 1.35;
+}
+
+.cabin-serif--italic {
+  font-style: italic;
+}
+
+.cabin-serif--lg {
+  font-size: var(--cabin-fs-xl);
+}
+
+.cabin-serif--md {
+  font-size: var(--cabin-fs-lg);
+}
+
+/* Body: Inter */
+.cabin-body {
+  font-family: var(--cabin-font-ui);
+  font-size: var(--cabin-fs-md);
+  font-weight: 400;
+  line-height: 1.65;
+  color: var(--cabin-text);
+}
+
+.cabin-body--medium {
+  font-weight: 500;
+}
+
+/* Label: small caps tracking, muted by default. Eyebrow is the brass label. */
+.cabin-label,
+.cabin-eyebrow {
+  font-family: var(--cabin-font-ui);
+  font-size: var(--cabin-fs-xs);
+  font-weight: 500;
+  letter-spacing: var(--cabin-track-label);
+  text-transform: uppercase;
+  color: var(--cabin-text-muted);
+}
+
+.cabin-label--brass,
+.cabin-eyebrow {
+  color: var(--cabin-brass);
+}
+
+/* --------------------------------------------------------------------------
+   4. Surfaces and rules
+   -------------------------------------------------------------------------- */
+
+.cabin-surface {
+  background: var(--cabin-elevation);
+  border: 1px solid var(--cabin-border);
+  border-radius: var(--cabin-radius-md);
+  box-shadow: var(--cabin-shadow-card);
+}
+
+.cabin-rule {
+  border: 0;
+  border-top: 1px solid var(--cabin-border);
+  margin: var(--cabin-space-5) 0;
+}
+
+.cabin-rule--brass {
+  border-top-color: var(--cabin-brass);
+  width: 2.5rem;
+  margin: var(--cabin-space-3) 0;
+}
+
+/* --------------------------------------------------------------------------
+   5. Pills
+   -------------------------------------------------------------------------- */
+
+.cabin-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cabin-space-2);
+  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--cabin-border);
+  border-radius: var(--cabin-radius-pill);
+  background: transparent;
+  color: var(--cabin-text);
+  font-family: var(--cabin-font-ui);
+  font-size: var(--cabin-fs-xs);
+  font-weight: 500;
+  letter-spacing: var(--cabin-track-label);
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition:
+    border-color var(--cabin-dur-fast) var(--cabin-ease-out),
+    color var(--cabin-dur-fast) var(--cabin-ease-out),
+    background var(--cabin-dur-fast) var(--cabin-ease-out);
+}
+
+.cabin-pill--active {
+  border-color: var(--cabin-brass);
+  color: var(--cabin-display);
+  background: var(--cabin-brass-glow);
+}
+
+.cabin-pill--brass {
+  border-color: var(--cabin-brass);
+  color: var(--cabin-brass);
+}
+
+/* --------------------------------------------------------------------------
+   6. Buttons
+   -------------------------------------------------------------------------- */
+
+.cabin-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--cabin-space-2);
+  min-height: 2.75rem;
+  padding: 0 var(--cabin-space-5);
+  border: 1px solid var(--cabin-display);
+  border-radius: var(--cabin-radius-sm);
+  background: var(--cabin-display);
+  color: var(--cabin-canvas);
+  font-family: var(--cabin-font-ui);
+  font-size: var(--cabin-fs-xs);
+  font-weight: 500;
+  letter-spacing: var(--cabin-track-label);
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background var(--cabin-dur-fast) var(--cabin-ease-out),
+    color var(--cabin-dur-fast) var(--cabin-ease-out),
+    border-color var(--cabin-dur-fast) var(--cabin-ease-out),
+    transform var(--cabin-dur-fast) var(--cabin-ease-out);
+}
+
+.cabin-btn:hover {
+  background: var(--cabin-brass);
+  border-color: var(--cabin-brass);
+  color: var(--cabin-canvas);
+}
+
+.cabin-btn:active {
+  transform: translateY(1px);
+}
+
+.cabin-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cabin-btn--ghost {
+  background: transparent;
+  color: var(--cabin-display);
+  border-color: var(--cabin-border-strong);
+}
+
+.cabin-btn--ghost:hover {
+  background: transparent;
+  color: var(--cabin-brass);
+  border-color: var(--cabin-brass);
+}
+
+.cabin-btn--icon {
+  width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0;
+  border-radius: 50%;
+}
+
+/* --------------------------------------------------------------------------
+   7. Inputs
+   -------------------------------------------------------------------------- */
+
+/* body.cabin-theme prefix so the resting boundary beats Horizon base.css `input:not([type=checkbox], [type=radio])` */
+body.cabin-theme .cabin-input,
+.cabin-input {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0 var(--cabin-space-4);
+  border: 1px solid var(--cabin-border-control);
+  border-radius: var(--cabin-radius-sm);
+  background: var(--cabin-canvas);
+  color: var(--cabin-display);
+  font-family: var(--cabin-font-ui);
+  font-size: var(--cabin-fs-md);
+  font-weight: 400;
+  transition:
+    border-color var(--cabin-dur-fast) var(--cabin-ease-out),
+    box-shadow var(--cabin-dur-fast) var(--cabin-ease-out);
+}
+
+.cabin-input::placeholder {
+  color: var(--cabin-text-muted);
+}
+
+body.cabin-theme .cabin-input:focus,
+.cabin-input:focus {
+  outline: none;
+  border-color: var(--cabin-brass);
+  box-shadow: 0 0 0 3px var(--cabin-brass-glow);
+}
+
+body.cabin-theme .cabin-input[aria-invalid='true'],
+.cabin-input[aria-invalid='true'] {
+  border-color: var(--cabin-state-error);
+}
+
+/* --------------------------------------------------------------------------
+   8. Focus
+   -------------------------------------------------------------------------- */
+
+.cabin-focus-ring:focus-visible,
+.cabin-btn:focus-visible,
+.cabin-pill:focus-visible {
+  outline: 2px solid var(--cabin-brass);
+  outline-offset: 3px;
+}
+
+/* --------------------------------------------------------------------------
+   9. Accessibility and layout utilities
+   -------------------------------------------------------------------------- */
+
+/* !important is needed here because Horizon's own utilities and component
+   rules position elements with higher-specificity selectors. */
+.cabin-visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.cabin-container {
+  width: 100%;
+  max-width: 80rem;
+  margin-inline: auto;
+  padding-inline: clamp(1rem, 4vw, 3rem);
+}
+
+.cabin-grid {
+  display: grid;
+  gap: var(--cabin-space-5);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+}
+
+/* --------------------------------------------------------------------------
+   10. Motion
+   -------------------------------------------------------------------------- */
+
+/* Single entrance: fade + 12px rise, toggled by adding .is-visible (an
+   IntersectionObserver in the component). Without JS the element stays
+   hidden, so components must only add this class from JS. */
+.cabin-fade-up {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity var(--cabin-dur-slow) var(--cabin-ease-out),
+    transform var(--cabin-dur-slow) var(--cabin-ease-out);
+}
+
+.cabin-fade-up.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* --------------------------------------------------------------------------
+   11. Global states
+   -------------------------------------------------------------------------- */
+
+/* Set by assets/scent-modal.js while the note dialog is open */
+body.cabin-modal-open {
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------------------
+   12. Reduced motion
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --cabin-dur-fast: 0ms;
+    --cabin-dur-base: 0ms;
+    --cabin-dur-slow: 0ms;
+  }
+
+  .cabin-fade-up {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
